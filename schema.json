@@ -1,0 +1,1467 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://eclipse-opensovd.org/schemas/opensovd.cda.diagdesc/v1/schema.json",
+    "title": "OpenSOVD CDA Diagnostic Description (v1)",
+    "type": "object",
+    "required": [
+        "schema",
+        "meta",
+        "ecu",
+        "sessions",
+        "services",
+        "access_patterns"
+    ],
+    "additionalProperties": false,
+    "properties": {
+        "schema": {
+            "type": "string",
+            "const": "opensovd.cda.diagdesc/v1"
+        },
+        "meta": {
+            "$ref": "#/$defs/meta"
+        },
+        "ecu": {
+            "$ref": "#/$defs/ecu"
+        },
+        "sessions": {
+            "$ref": "#/$defs/sessions"
+        },
+        "security": {
+            "$ref": "#/$defs/security"
+        },
+        "authentication": {
+            "$ref": "#/$defs/authentication"
+        },
+        "services": {
+            "$ref": "#/$defs/services"
+        },
+        "access_patterns": {
+            "$ref": "#/$defs/access_patterns"
+        },
+        "types": {
+            "$ref": "#/$defs/types"
+        },
+        "dids": {
+            "$ref": "#/$defs/dids"
+        },
+        "routines": {
+            "$ref": "#/$defs/routines"
+        },
+        "dtc_config": {
+            "$ref": "#/$defs/dtc_config"
+        },
+        "dtcs": {
+            "$ref": "#/$defs/dtcs"
+        },
+        "x-oem": {
+            "type": "object"
+        }
+    },
+    "$defs": {
+        "date": {
+            "type": "string",
+            "format": "date"
+        },
+        "semver": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
+        "uint8": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+        },
+        "uint16": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535
+        },
+        "uint32": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+        },
+        "uint64": {
+            "oneOf": [
+                {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                {
+                    "type": "string",
+                    "pattern": "^\\d+$"
+                }
+            ]
+        },
+        "hexString": {
+            "type": "string",
+            "pattern": "^0x[0-9A-Fa-f]+$"
+        },
+        "hexScalar": {
+            "oneOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "$ref": "#/$defs/hexString"
+                }
+            ]
+        },
+        "hex8": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/uint8"
+                },
+                {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]{1,2}$"
+                }
+            ]
+        },
+        "hex16": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/uint16"
+                },
+                {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]{1,4}$"
+                }
+            ]
+        },
+        "hex24": {
+            "oneOf": [
+                {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 16777215
+                },
+                {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]{1,6}$"
+                }
+            ]
+        },
+        "hex32": {
+            "oneOf": [
+                {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]{1,8}$"
+                }
+            ]
+        },
+        "hex64": {
+            "oneOf": [
+                {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 18446744073709551615
+                },
+                {
+                    "type": "string",
+                    "pattern": "^0x[0-9A-Fa-f]{1,16}$"
+                }
+            ]
+        },
+        "ipv4": {
+            "type": "string",
+            "format": "ipv4"
+        },
+        "ipv6": {
+            "type": "string",
+            "format": "ipv6"
+        },
+        "ip": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/ipv4"
+                },
+                {
+                    "$ref": "#/$defs/ipv6"
+                }
+            ]
+        },
+        "meta": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "author",
+                "domain",
+                "created",
+                "revision",
+                "description"
+            ],
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "created": {
+                    "$ref": "#/$defs/date"
+                },
+                "revision": {
+                    "$ref": "#/$defs/semver"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "revisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "version",
+                            "date",
+                            "author",
+                            "changes"
+                        ],
+                        "properties": {
+                            "version": {
+                                "$ref": "#/$defs/semver"
+                            },
+                            "date": {
+                                "$ref": "#/$defs/date"
+                            },
+                            "author": {
+                                "type": "string"
+                            },
+                            "changes": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "ecu": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "id",
+                "name",
+                "addressing"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "addressing": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "doip": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "ip",
+                                "logical_address",
+                                "tester_address"
+                            ],
+                            "properties": {
+                                "ip": {
+                                    "$ref": "#/$defs/ip"
+                                },
+                                "port": {
+                                    "$ref": "#/$defs/uint16"
+                                },
+                                "logical_address": {
+                                    "$ref": "#/$defs/hex16"
+                                },
+                                "tester_address": {
+                                    "$ref": "#/$defs/hex16"
+                                },
+                                "functional_address": {
+                                    "$ref": "#/$defs/hex16"
+                                },
+                                "routing_activation": {
+                                    "$ref": "#/$defs/hex16"
+                                }
+                            }
+                        },
+                        "can": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "physical_request": {
+                                    "$ref": "#/$defs/hex32"
+                                },
+                                "physical_response": {
+                                    "$ref": "#/$defs/hex32"
+                                },
+                                "functional_request": {
+                                    "$ref": "#/$defs/hex32"
+                                }
+                            }
+                        },
+                        "timing": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "p2_ms": {
+                                    "$ref": "#/$defs/uint16"
+                                },
+                                "p2_star_ms": {
+                                    "$ref": "#/$defs/uint16"
+                                },
+                                "s3_ms": {
+                                    "$ref": "#/$defs/uint16"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "sessions": {
+            "type": "object",
+            "description": "Map: session_name -> session definition",
+            "additionalProperties": {
+                "$ref": "#/$defs/session"
+            }
+        },
+        "session": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "alias": {
+                    "type": "string"
+                },
+                "requires_unlock": {
+                    "type": "boolean"
+                },
+                "timing": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "p2_ms": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "p2_star_ms": {
+                            "$ref": "#/$defs/uint16"
+                        }
+                    }
+                }
+            }
+        },
+        "security": {
+            "type": "object",
+            "description": "Map: level_name -> security level definition",
+            "additionalProperties": {
+                "$ref": "#/$defs/security_level"
+            }
+        },
+        "security_level": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "level",
+                "seed_request",
+                "key_send",
+                "seed_size",
+                "key_size",
+                "algorithm",
+                "max_attempts",
+                "delay_on_fail_ms",
+                "allowed_sessions"
+            ],
+            "properties": {
+                "level": {
+                    "$ref": "#/$defs/uint8"
+                },
+                "seed_request": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "key_send": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "seed_size": {
+                    "$ref": "#/$defs/uint8"
+                },
+                "key_size": {
+                    "$ref": "#/$defs/uint8"
+                },
+                "algorithm": {
+                    "type": "string"
+                },
+                "max_attempts": {
+                    "$ref": "#/$defs/uint8"
+                },
+                "delay_on_fail_ms": {
+                    "$ref": "#/$defs/uint32"
+                },
+                "allowed_sessions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "authentication": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "anti_brute_force": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "max_attempts": {
+                            "$ref": "#/$defs/uint8"
+                        },
+                        "delay_initial_s": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "delay_max_s": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "delay_multiplier": {
+                            "type": "number"
+                        }
+                    }
+                },
+                "roles": {
+                    "type": "object",
+                    "description": "Map: role_name -> role definition",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "id",
+                            "timeout_s",
+                            "certificate_ref",
+                            "allowed_sessions",
+                            "proof_of_ownership"
+                        ],
+                        "properties": {
+                            "id": {
+                                "$ref": "#/$defs/hex8"
+                            },
+                            "timeout_s": {
+                                "$ref": "#/$defs/uint16"
+                            },
+                            "certificate_ref": {
+                                "type": "string"
+                            },
+                            "allowed_sessions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "proof_of_ownership": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "services": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "diagnosticSessionControl": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        }
+                    }
+                },
+                "ecuReset": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/$defs/hex8"
+                            }
+                        }
+                    }
+                },
+                "securityAccess": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "communicationControl": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        },
+                        "communication_types": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/hex8"
+                            }
+                        },
+                        "nrc_on_fail": {
+                            "$ref": "#/$defs/hex8"
+                        }
+                    }
+                },
+                "authentication": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        }
+                    }
+                },
+                "testerPresent": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "controlDTCSetting": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "responseOnEvent": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        },
+                        "max_active_events": {
+                            "$ref": "#/$defs/uint8"
+                        }
+                    }
+                },
+                "linkControl": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        }
+                    }
+                },
+                "readDataByIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "readMemoryByAddress": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "alfid": {
+                            "$ref": "#/$defs/hex8"
+                        },
+                        "max_length": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "regions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/memory_region"
+                            }
+                        }
+                    }
+                },
+                "readScalingDataByIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "dids": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/hex16"
+                            }
+                        }
+                    }
+                },
+                "readDataByPeriodicIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        },
+                        "supported_periods_ms": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/uint16"
+                            }
+                        },
+                        "identifiers": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/hex8"
+                            }
+                        }
+                    }
+                },
+                "dynamicallyDefineDataIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        },
+                        "max_dynamic_dids": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "allow_by_identifier": {
+                            "type": "boolean"
+                        },
+                        "allow_by_memory_address": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "writeDataByIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "writeMemoryByAddress": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "alfid": {
+                            "$ref": "#/$defs/hex8"
+                        },
+                        "max_length": {
+                            "$ref": "#/$defs/uint16"
+                        },
+                        "regions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/memory_region"
+                            }
+                        }
+                    }
+                },
+                "clearDiagnosticInformation": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "readDTCInformation": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/hex8"
+                            }
+                        }
+                    }
+                },
+                "inputOutputControlByIdentifier": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "control_types": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "returnControlToECU",
+                                    "resetToDefault",
+                                    "freezeCurrentState",
+                                    "shortTermAdjustment"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "routineControl": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "startRoutine",
+                                    "stopRoutine",
+                                    "requestResults"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "requestDownload": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "max_number_of_block_length": {
+                            "$ref": "#/$defs/uint32"
+                        },
+                        "regions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/memory_region"
+                            }
+                        }
+                    }
+                },
+                "requestUpload": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "max_number_of_block_length": {
+                            "$ref": "#/$defs/uint32"
+                        },
+                        "regions": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/memory_region"
+                            }
+                        }
+                    }
+                },
+                "transferData": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "max_block_sequence_counter": {
+                            "$ref": "#/$defs/uint8"
+                        }
+                    }
+                },
+                "requestTransferExit": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "requestFileTransfer": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        },
+                        "max_file_size": {
+                            "$ref": "#/$defs/uint64"
+                        }
+                    }
+                },
+                "securedDataTransmission": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "enabled"
+                    ],
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "subfunctions": {
+                            "$ref": "#/$defs/hex8_list_or_map"
+                        }
+                    }
+                }
+            }
+        },
+        "hex8_list_or_map": {
+            "oneOf": [
+                {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/hex8"
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/hex8"
+                    }
+                }
+            ]
+        },
+        "access_patterns": {
+            "type": "object",
+            "description": "Map: pattern_name -> access pattern",
+            "additionalProperties": {
+                "$ref": "#/$defs/access_pattern"
+            }
+        },
+        "access_pattern": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "sessions",
+                "security",
+                "authentication"
+            ],
+            "properties": {
+                "sessions": {
+                    "oneOf": [
+                        {
+                            "type": "string",
+                            "const": "any"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ]
+                },
+                "security": {
+                    "oneOf": [
+                        {
+                            "type": "string",
+                            "const": "none"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ]
+                },
+                "authentication": {
+                    "oneOf": [
+                        {
+                            "type": "string",
+                            "const": "none"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ]
+                },
+                "nrc_on_fail": {
+                    "$ref": "#/$defs/hex8"
+                }
+            }
+        },
+        "types": {
+            "type": "object",
+            "description": "Map: type_name -> type definition",
+            "additionalProperties": {
+                "$ref": "#/$defs/type_definition"
+            }
+        },
+        "type_definition": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/atomic_type"
+                },
+                {
+                    "$ref": "#/$defs/enum_type"
+                },
+                {
+                    "$ref": "#/$defs/struct_type"
+                }
+            ]
+        },
+        "atomic_type": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "base"
+            ],
+            "properties": {
+                "base": {
+                    "type": "string",
+                    "enum": [
+                        "u8",
+                        "u16",
+                        "u32",
+                        "u64",
+                        "s8",
+                        "s16",
+                        "s32",
+                        "s64",
+                        "f32",
+                        "f64",
+                        "ascii",
+                        "bytes"
+                    ]
+                },
+                "endian": {
+                    "type": "string",
+                    "enum": [
+                        "big",
+                        "little"
+                    ]
+                },
+                "length": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "scale": {
+                    "type": "number"
+                },
+                "offset": {
+                    "type": "number"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "pattern": {
+                    "type": "string"
+                },
+                "constraints": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "internal": {
+                            "type": "array",
+                            "items": {
+                                "type": "number"
+                            },
+                            "minItems": 2,
+                            "maxItems": 2
+                        },
+                        "physical": {
+                            "type": "array",
+                            "items": {
+                                "type": "number"
+                            },
+                            "minItems": 2,
+                            "maxItems": 2
+                        }
+                    }
+                },
+                "validation": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "forbidden_characters": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "forbidden_values": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/hexScalar"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "enum_type": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "base",
+                "enum"
+            ],
+            "properties": {
+                "base": {
+                    "type": "string",
+                    "enum": [
+                        "u8",
+                        "u16"
+                    ]
+                },
+                "enum": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "struct_type": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "base",
+                "size",
+                "fields"
+            ],
+            "properties": {
+                "base": {
+                    "type": "string",
+                    "const": "struct"
+                },
+                "size": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "required": [
+                            "name"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "dids": {
+            "type": "object",
+            "description": "Map: DID -> DID definition. YAML tools may treat unquoted 0xFFFF keys as integers; key pattern validation is intentionally not enforced here.",
+            "additionalProperties": {
+                "$ref": "#/$defs/did_definition"
+            }
+        },
+        "did_definition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "name",
+                "type",
+                "access"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "type": {
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/$defs/type_inline"
+                        }
+                    ]
+                },
+                "access": {
+                    "type": "string"
+                },
+                "readable": {
+                    "type": "boolean"
+                },
+                "writable": {
+                    "type": "boolean"
+                },
+                "snapshot": {
+                    "type": "boolean"
+                },
+                "io_control": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "return_control_to_ecu": {
+                            "type": "boolean"
+                        },
+                        "reset_to_default": {
+                            "type": "boolean"
+                        },
+                        "freeze_current_state": {
+                            "type": "boolean"
+                        },
+                        "short_term_adjustment": {
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        },
+        "type_inline": {
+            "$ref": "#/$defs/type_definition"
+        },
+        "routines": {
+            "type": "object",
+            "description": "Map: routine_id -> routine definition. Key pattern validation is intentionally not enforced to support unquoted hex keys in YAML.",
+            "additionalProperties": {
+                "$ref": "#/$defs/routine_definition"
+            }
+        },
+        "routine_definition": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "name",
+                "access",
+                "operations"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "access": {
+                    "type": "string"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "start",
+                            "stop",
+                            "result"
+                        ]
+                    }
+                },
+                "parameters": {
+                    "type": "object"
+                }
+            }
+        },
+        "dtc_config": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "status_availability_mask": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "snapshots": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/dtc_snapshot_definition"
+                    }
+                },
+                "extended_data": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/dtc_extended_data_definition"
+                    }
+                }
+            }
+        },
+        "dtc_snapshot_definition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "record_number",
+                "dids"
+            ],
+            "properties": {
+                "record_number": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "dids": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/hex16"
+                    }
+                },
+                "trigger": {
+                    "type": "string"
+                },
+                "update": {
+                    "type": "boolean"
+                },
+                "x-oem": {
+                    "type": "object"
+                }
+            }
+        },
+        "dtc_extended_data_definition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "record_number"
+            ],
+            "properties": {
+                "record_number": {
+                    "$ref": "#/$defs/hex8"
+                },
+                "type": {
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "$ref": "#/$defs/type_inline"
+                        }
+                    ]
+                },
+                "trigger": {
+                    "type": "string"
+                },
+                "x-oem": {
+                    "type": "object"
+                }
+            }
+        },
+        "dtcs": {
+            "type": "object",
+            "description": "Map: DTC -> DTC definition. Key pattern validation is intentionally not enforced to support unquoted hex keys in YAML.",
+            "additionalProperties": {
+                "$ref": "#/$defs/dtc_definition"
+            }
+        },
+        "dtc_definition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "name",
+                "sae"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "sae": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extended_data": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "x-oem": {
+                    "type": "object"
+                }
+            }
+        },
+        "memory_region": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "name",
+                "start",
+                "end",
+                "access"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "start": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/hex32"
+                        },
+                        {
+                            "$ref": "#/$defs/hex64"
+                        }
+                    ]
+                },
+                "end": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/hex32"
+                        },
+                        {
+                            "$ref": "#/$defs/hex64"
+                        }
+                    ]
+                },
+                "access": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

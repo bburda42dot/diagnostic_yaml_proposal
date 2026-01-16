@@ -1,0 +1,819 @@
+# =============================================================================
+# Example: Engine Control Module - Diagnostic Description
+# =============================================================================
+# A complete example demonstrating OpenSOVD CDA Schema v1 features
+# =============================================================================
+
+schema: "opensovd.cda.diagdesc/v1"
+
+meta:
+  author: "CDA Team"
+  domain: "Variant"
+  created: "2026-01-12"
+  revision: "1.0.0"
+  description: "Engine Control Module - UDS Diagnostic Configuration"
+  tags: [powertrain, engine, uds, example]
+  revisions:
+    - version: "1.0.0"
+      date: "2026-01-12"
+      author: "CDA Team"
+      changes: "Initial release"
+
+# -----------------------------------------------------------------------------
+# ECU DEFINITION
+# -----------------------------------------------------------------------------
+ecu:
+  id: "ECM_01"
+  name: "Engine Control Module"
+
+  addressing:
+    doip:
+      ip: "192.168.0.50"
+      port: 13400
+      logical_address: 0x0E00
+      tester_address: 0x0E80
+      functional_address: 0xE400
+      routing_activation: 0x0000
+    can:
+      physical_request: 0x7E0
+      physical_response: 0x7E8
+      functional_request: 0x7DF
+    timing:
+      p2_ms: 50
+      p2_star_ms: 5000
+      s3_ms: 5000
+
+# -----------------------------------------------------------------------------
+# SESSIONS
+# -----------------------------------------------------------------------------
+sessions:
+  default:
+    id: 0x01
+    alias: "defaultSession"
+    timing:
+      p2_ms: 50
+      p2_star_ms: 5000
+  programming:
+    id: 0x02
+    requires_unlock: true
+    alias: "programmingSession"
+  extended:
+    id: 0x03
+    alias: "extendedDiagnosticSession"
+
+# -----------------------------------------------------------------------------
+# SECURITY
+# -----------------------------------------------------------------------------
+security:
+  level_01:
+    level: 1
+    seed_request: 0x01
+    key_send: 0x02
+    seed_size: 16
+    key_size: 16
+    algorithm: "aes_cmac_v1"
+    max_attempts: 3
+    delay_on_fail_ms: 10000
+    allowed_sessions: [extended, programming]
+
+  level_11:
+    level: 0x11
+    seed_request: 0x11
+    key_send: 0x12
+    seed_size: 32
+    key_size: 32
+    algorithm: "oem_hsm_v2"
+    max_attempts: 3
+    delay_on_fail_ms: 30000
+    allowed_sessions: [programming]
+
+# -----------------------------------------------------------------------------
+# AUTHENTICATION (UDS 0x29)
+# -----------------------------------------------------------------------------
+authentication:
+  anti_brute_force:
+    max_attempts: 10
+    delay_initial_s: 60
+    delay_max_s: 960
+    delay_multiplier: 2.0
+
+  roles:
+    tester:
+      id: 0x00
+      timeout_s: 30
+      certificate_ref: "tester_cert_v1"
+      allowed_sessions: [extended]
+      proof_of_ownership: false
+
+    factory:
+      id: 0x01
+      timeout_s: 30
+      certificate_ref: "factory_cert_v1"
+      allowed_sessions: [extended, programming]
+      proof_of_ownership: true
+
+    oem:
+      id: 0x02
+      timeout_s: 60
+      certificate_ref: "oem_cert_v1"
+      allowed_sessions: [extended, programming]
+      proof_of_ownership: true
+
+    aftersales:
+      id: 0x03
+      timeout_s: 30
+      certificate_ref: "aftersales_cert_v1"
+      allowed_sessions: [extended]
+      proof_of_ownership: false
+
+# -----------------------------------------------------------------------------
+# SERVICES
+# -----------------------------------------------------------------------------
+services:
+  diagnosticSessionControl:
+    enabled: true
+    subfunctions: [0x01, 0x02, 0x03]
+
+  ecuReset:
+    enabled: true
+    subfunctions:
+      hardReset: 0x01
+      keyOffOnReset: 0x02
+      softReset: 0x03
+
+  securityAccess:
+    enabled: true
+
+  authentication:
+    enabled: true
+    subfunctions:
+      deAuthenticate: 0x00
+      verifyCertificateUnidirectional: 0x01
+      verifyCertificateBidirectional: 0x02
+      proofOfOwnership: 0x03
+      transmitCertificate: 0x04
+      authenticationConfiguration: 0x08
+
+  testerPresent:
+    enabled: true
+
+  controlDTCSetting:
+    enabled: true
+
+  readDataByIdentifier:
+    enabled: true
+
+  readMemoryByAddress:
+    enabled: false
+    alfid: 0x24
+    max_length: 256
+    regions:
+      - name: "calibration_read"
+        start: 0x00010000
+        end: 0x0001FFFF
+        access: extended_read
+
+  writeMemoryByAddress:
+    enabled: false
+    alfid: 0x24
+    max_length: 128
+    regions:
+      - name: "calibration_write"
+        start: 0x00010000
+        end: 0x00010FFF
+        access: programming_only
+
+  readScalingDataByIdentifier:
+    enabled: false
+    dids: [0x1001, 0x1002]
+
+  readDataByPeriodicIdentifier:
+    enabled: false
+    subfunctions:
+      stopSending: 0x00
+      sendAtSlowRate: 0x01
+      sendAtMediumRate: 0x02
+      sendAtFastRate: 0x03
+    supported_periods_ms: [100, 500, 1000]
+    identifiers: [0x01, 0x02]
+
+  dynamicallyDefineDataIdentifier:
+    enabled: false
+    subfunctions: [0x01, 0x02, 0x03]
+    max_dynamic_dids: 16
+    allow_by_identifier: true
+    allow_by_memory_address: false
+
+  writeDataByIdentifier:
+    enabled: true
+
+  readDTCInformation:
+    enabled: true
+    subfunctions: [0x01, 0x02, 0x03, 0x04, 0x06, 0x0A]
+
+  clearDiagnosticInformation:
+    enabled: true
+
+  inputOutputControlByIdentifier:
+    enabled: true
+    control_types: [returnControlToECU, shortTermAdjustment]
+
+  routineControl:
+    enabled: true
+    subfunctions: [startRoutine, stopRoutine, requestResults]
+
+  requestDownload:
+    enabled: false
+    max_number_of_block_length: 4096
+    regions:
+      - name: "flash"
+        start: 0x00020000
+        end: 0x0007FFFF
+        access: programming_only
+
+  requestUpload:
+    enabled: false
+    max_number_of_block_length: 4096
+    regions:
+      - name: "flash"
+        start: 0x00020000
+        end: 0x0007FFFF
+        access: programming_only
+
+  transferData:
+    enabled: false
+    max_block_sequence_counter: 255
+
+  requestTransferExit:
+    enabled: false
+
+  requestFileTransfer:
+    enabled: false
+    subfunctions:
+      addFile: 0x01
+      deleteFile: 0x02
+      replaceFile: 0x03
+    max_file_size: "4294967296"
+
+  securedDataTransmission:
+    enabled: false
+    subfunctions: [0x01]
+
+  communicationControl:
+    enabled: false
+    subfunctions: [0x00, 0x01, 0x02, 0x03]
+    communication_types: [0x01, 0x02]
+    nrc_on_fail: 0x22
+
+  responseOnEvent:
+    enabled: false
+    subfunctions:
+      stopResponseOnEvent: 0x00
+      onDTCStatusChange: 0x05
+    max_active_events: 4
+
+  linkControl:
+    enabled: false
+    subfunctions:
+      verifyModeTransitionWithFixedParameter: 0x01
+      verifyModeTransitionWithSpecificParameter: 0x02
+
+# -----------------------------------------------------------------------------
+# ACCESS PATTERNS
+# -----------------------------------------------------------------------------
+access_patterns:
+  public:
+    sessions: any
+    security: none
+    authentication: none
+
+  extended_read:
+    sessions: [default, extended]
+    security: none
+    authentication: none
+
+  extended_write:
+    sessions: [extended]
+    security: [level_01]
+    authentication: none
+
+  programming_only:
+    sessions: [programming]
+    security: [level_01, level_11]
+    authentication: none
+
+  actuator_control:
+    sessions: [extended]
+    security: [level_01]
+    authentication: none
+
+  # Patterns requiring PKI authentication (0x29)
+  authenticated_read:
+    sessions: [extended]
+    security: none
+    authentication: [tester, factory, oem]
+
+  factory_access:
+    sessions: [extended, programming]
+    security: [level_01]
+    authentication: [factory, oem]
+    nrc_on_fail: 0x33
+
+# -----------------------------------------------------------------------------
+# TYPES
+# -----------------------------------------------------------------------------
+types:
+  # Engine measurements
+  rpm_type:
+    base: u16
+    endian: big
+    scale: 0.25
+    offset: 0
+    unit: "rpm"
+    constraints:
+      internal: [0, 65535]
+      physical: [0, 16383.75]
+
+  temperature_type:
+    base: u8
+    scale: 1
+    offset: -40
+    unit: "degC"
+    constraints:
+      internal: [0, 255]
+      physical: [-40, 215]
+
+  percentage_type:
+    base: u8
+    scale: 0.392157
+    offset: 0
+    unit: "%"
+    constraints:
+      internal: [0, 255]
+      physical: [0, 100]
+
+  voltage_type:
+    base: u16
+    endian: big
+    scale: 0.001
+    offset: 0
+    unit: "V"
+    constraints:
+      internal: [0, 65535]
+      physical: [0, 65.535]
+
+  pressure_kpa_type:
+    base: u8
+    scale: 1
+    offset: 0
+    unit: "kPa"
+    constraints:
+      internal: [0, 255]
+      physical: [0, 255]
+
+  # Identification types
+  vin_type:
+    base: ascii
+    length: 17
+    pattern: "^[A-HJ-NPR-Z0-9]{17}$"
+    validation:
+      # VIN cannot contain I, O, Q (confusion with 1, 0)
+      forbidden_characters:
+        - "I"
+        - "O"
+        - "Q"
+
+  part_number_type:
+    base: ascii
+    length: 24
+    validation:
+      # Only printable ASCII allowed
+      forbidden_characters:
+        - "(0x00..0x1F)" # Control characters
+        - "(0x7F..0xFF)" # DEL and extended ASCII
+
+  # Enumeration types
+  session_type:
+    base: u8
+    enum:
+      0x01: defaultSession
+      0x02: programmingSession
+      0x03: extendedDiagnosticSession
+
+  fuel_system_status_type:
+    base: u8
+    enum:
+      0x00: openLoopInsufficientTemp
+      0x01: closedLoop
+      0x02: openLoopEngineLoad
+      0x04: openLoopSystemFailure
+      0x08: closedLoopFaultDetected
+
+  # Example struct type (UDS payload structure)
+  freeze_frame_struct_type:
+    base: struct
+    size: 8
+    fields:
+      - name: engineSpeed
+        type: rpm_type
+      - name: coolantTemp
+        type: temperature_type
+
+# -----------------------------------------------------------------------------
+# DIDs - IDENTIFICATION
+# -----------------------------------------------------------------------------
+dids:
+  0xF190:
+    name: "VIN"
+    description: "Vehicle Identification Number"
+    type: vin_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: false
+
+  0xF187:
+    name: "VehicleManufacturerSparePartNumber"
+    type: part_number_type
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: false
+
+  0xF18C:
+    name: "ECUSerialNumber"
+    type:
+      base: ascii
+      length: 20
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: false
+
+  0xF191:
+    name: "VehicleManufacturerECUHardwareNumber"
+    type:
+      base: ascii
+      length: 16
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: false
+
+  0xF195:
+    name: "SystemSupplierSoftwareVersionNumber"
+    type:
+      base: ascii
+      length: 16
+    access: public
+    readable: true
+    writable: false
+    snapshot: false
+
+  0xF186:
+    name: "ActiveDiagnosticSession"
+    type: session_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: false
+
+  # -----------------------------------------------------------------------------
+  # DIDs - MEASUREMENTS (snapshot-capable)
+  # -----------------------------------------------------------------------------
+  0x1001:
+    name: "EngineSpeed"
+    description: "Engine rotational speed"
+    type: rpm_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1002:
+    name: "EngineCoolantTemperature"
+    description: "Engine coolant temperature"
+    type: temperature_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1003:
+    name: "ThrottlePosition"
+    description: "Throttle position sensor value"
+    type: percentage_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1004:
+    name: "ControlModuleVoltage"
+    description: "ECU supply voltage"
+    type: voltage_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1005:
+    name: "IntakeAirTemperature"
+    description: "Intake manifold air temperature"
+    type: temperature_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1006:
+    name: "IntakeManifoldPressure"
+    description: "Intake manifold absolute pressure"
+    type: pressure_kpa_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1007:
+    name: "FuelSystemStatus"
+    description: "Fuel system operating status"
+    type: fuel_system_status_type
+    access: public
+    readable: true
+    writable: false
+    snapshot: true
+
+  # -----------------------------------------------------------------------------
+  # DIDs - ACTUATOR CONTROL
+  # -----------------------------------------------------------------------------
+  0x2001:
+    name: "FuelPumpRelay"
+    description: "Fuel pump relay control"
+    type:
+      base: u8
+      constraints:
+        internal: [0, 1]
+    access: actuator_control
+    readable: true
+    writable: false
+    snapshot: false
+    io_control:
+      enabled: true
+      return_control_to_ecu: true
+      short_term_adjustment: true
+      freeze_current_state: false
+      reset_to_default: false
+
+  0x2002:
+    name: "IgnitionCoilTest"
+    description: "Ignition coil cylinder test output"
+    type:
+      base: u8
+      constraints:
+        internal: [0, 8]
+    access: actuator_control
+    readable: true
+    writable: false
+    snapshot: false
+    io_control:
+      enabled: true
+      return_control_to_ecu: true
+      short_term_adjustment: true
+      freeze_current_state: false
+      reset_to_default: false
+
+  # -----------------------------------------------------------------------------
+  # DIDs - CALIBRATION
+  # -----------------------------------------------------------------------------
+  0x3001:
+    name: "IdleSpeedTarget"
+    description: "Target idle speed setpoint"
+    type:
+      base: u16
+      endian: big
+      unit: "rpm"
+      constraints:
+        internal: [500, 1500]
+    access: extended_write
+    readable: true
+    writable: true
+    snapshot: false
+
+  0x3002:
+    name: "MaxEngineSpeedLimit"
+    description: "Maximum allowed engine speed"
+    type:
+      base: u16
+      endian: big
+      unit: "rpm"
+      constraints:
+        internal: [4000, 8000]
+    access: programming_only
+    readable: true
+    writable: true
+    snapshot: false
+
+# -----------------------------------------------------------------------------
+# ROUTINES
+# -----------------------------------------------------------------------------
+routines:
+  0xFF00:
+    name: "ClearAdaptiveValues"
+    description: "Reset all adaptive learning values to defaults"
+    access: extended_write
+    operations: [start]
+
+  0xFF01:
+    name: "CylinderBalanceTest"
+    description: "Individual cylinder power contribution test"
+    access: actuator_control
+    operations: [start, stop, result]
+    parameters:
+      start:
+        input:
+          - name: cylinderMask
+            type:
+              base: u8
+            description: "Bitmask of cylinders to test (0x0F = all 4)"
+          - name: testDuration
+            type:
+              base: u8
+              unit: "s"
+              constraints:
+                internal: [1, 30]
+            description: "Test duration in seconds"
+      result:
+        output:
+          - name: testStatus
+            type:
+              base: u8
+              enum:
+                0: completed
+                1: aborted
+                2: inProgress
+                3: failed
+          - name: cylinder1Contribution
+            type: percentage_type
+          - name: cylinder2Contribution
+            type: percentage_type
+          - name: cylinder3Contribution
+            type: percentage_type
+          - name: cylinder4Contribution
+            type: percentage_type
+
+  0xFF02:
+    name: "ThrottleAdaptation"
+    description: "Throttle body adaptation routine"
+    access: extended_write
+    operations: [start, result]
+    parameters:
+      result:
+        output:
+          - name: status
+            type:
+              base: u8
+              enum:
+                0: success
+                1: failed
+                2: notComplete
+          - name: closedPosition
+            type:
+              base: u16
+              endian: big
+          - name: openPosition
+            type:
+              base: u16
+              endian: big
+
+# -----------------------------------------------------------------------------
+# DTC CONFIGURATION
+# -----------------------------------------------------------------------------
+dtc_config:
+  status_availability_mask: 0x7F
+
+  snapshots:
+    currentSnapshot:
+      record_number: 0x01
+      trigger: testFailed
+      update: true
+      dids: [0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007]
+      x-oem:
+        note: "OEM-specific snapshot metadata (optional)"
+
+  extended_data:
+    occurrenceCounter:
+      record_number: 0x01
+      type:
+        base: u8
+      trigger: onTestFailed
+      x-oem:
+        note: "OEM-specific extended-data metadata (optional)"
+    agingCounter:
+      record_number: 0x02
+      type:
+        base: u8
+      trigger: onOperationCycleEnd
+    healingCounter:
+      record_number: 0x03
+      type:
+        base: u8
+      trigger: onTestPassed
+
+# -----------------------------------------------------------------------------
+# DTCs
+# -----------------------------------------------------------------------------
+dtcs:
+  # Engine speed/position
+  0x033500:
+    name: "CrankshaftPositionCorrelation"
+    sae: "P0335"
+    description: "Crankshaft Position Sensor A Circuit"
+    severity: 1
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter]
+
+  0x034000:
+    name: "CamshaftPositionSensorCircuit"
+    sae: "P0340"
+    description: "Camshaft Position Sensor A Circuit"
+    severity: 1
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter]
+
+  # Temperature sensors
+  0x011600:
+    name: "CoolantTempSensorRange"
+    sae: "P0116"
+    description: "Engine Coolant Temperature Sensor Range/Performance"
+    severity: 3
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, healingCounter]
+
+  0x011000:
+    name: "IntakeAirTempSensorCircuit"
+    sae: "P0110"
+    description: "Intake Air Temperature Sensor Circuit"
+    severity: 3
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  # Throttle/pedal
+  0x012100:
+    name: "ThrottlePositionSensorRange"
+    sae: "P0121"
+    description: "Throttle Position Sensor A Circuit Range/Performance"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter]
+
+  0x012300:
+    name: "ThrottlePositionSensorHigh"
+    sae: "P0123"
+    description: "Throttle Position Sensor A Circuit High"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter]
+
+  # Fuel system
+  0x023000:
+    name: "FuelPumpPrimaryCircuit"
+    sae: "P0230"
+    description: "Fuel Pump Primary Circuit"
+    severity: 1
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter]
+
+  # Electrical
+  0x056200:
+    name: "SystemVoltageLow"
+    sae: "P0562"
+    description: "System Voltage Low"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  0x056300:
+    name: "SystemVoltageHigh"
+    sae: "P0563"
+    description: "System Voltage High"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  # Misfire
+  0x030000:
+    name: "RandomMisfireDetected"
+    sae: "P0300"
+    description: "Random/Multiple Cylinder Misfire Detected"
+    severity: 1
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter, agingCounter, healingCounter]
+    x-oem:
+      note: "OEM classifier/tag for this DTC (optional)"
+
+# -----------------------------------------------------------------------------
+# X-OEM EXTENSIONS
+# -----------------------------------------------------------------------------
+x-oem:
+  note: "Placeholder for OEM extensions (kept minimal in this example)"
