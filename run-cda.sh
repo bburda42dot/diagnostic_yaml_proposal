@@ -162,7 +162,7 @@ for yaml_file in "${YAML_FILES[@]}"; do
     
     log "Converting $yaml_file -> $(basename "$mdd_file")"
     
-    CONVERT_ARGS=("convert" "$yaml_abs" "-o" "$mdd_file")
+    CONVERT_ARGS=("convert" "$yaml_abs" "-o" "$mdd_file" "--force")
     if [[ "$VERBOSE" == true ]]; then
         CONVERT_ARGS+=("-v")
     fi
