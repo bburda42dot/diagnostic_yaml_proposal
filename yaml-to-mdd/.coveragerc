@@ -1,0 +1,3 @@
+[run]
+omit =
+    */*_generated/*,*/scripts/*

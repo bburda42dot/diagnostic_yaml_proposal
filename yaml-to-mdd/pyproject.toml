@@ -1,0 +1,67 @@
+[tool.poetry]
+name = "yaml-to-mdd"
+version = "0.1.0"
+description = "Converter from OpenSOVD CDA Diagnostic Description YAML to MDD binary format"
+authors = ["OpenSOVD Contributors"]
+readme = "README.md"
+packages = [{ include = "yaml_to_mdd", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pyyaml = "^6.0"
+pydantic = "^2.5"
+typer = "^0.15"
+rich = "^13.7"
+flatbuffers = "^24.3"
+protobuf = "^5.26"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-cov = "^4.1"
+mypy = "^1.8"
+ruff = "^0.2"
+pre-commit = "^3.6"
+types-pyyaml = "^6.0"
+types-protobuf = "^4.24"
+
+[tool.poetry.scripts]
+yaml-to-mdd = "yaml_to_mdd.cli:app"
+generate-fbs = "yaml_to_mdd.scripts.generate_fbs:main"
+generate-proto = "yaml_to_mdd.scripts.generate_proto:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["src/yaml_to_mdd/fbs_generated", "src/yaml_to_mdd/proto_generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]
+ignore = ["D100", "D104", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+# services.py uses camelCase field names to match the YAML schema
+"src/yaml_to_mdd/models/services.py" = ["N815"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = false  # Disabled due to generated code variance between environments
+exclude = ["fbs_generated", "proto_generated"]
+
+[[tool.mypy.overrides]]
+module = ["yaml_to_mdd.fbs_generated.*", "flatbuffers.*", "zstandard.*"]
+ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["yaml_to_mdd.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=yaml_to_mdd --cov-report=term-missing --cov-config=.coveragerc"

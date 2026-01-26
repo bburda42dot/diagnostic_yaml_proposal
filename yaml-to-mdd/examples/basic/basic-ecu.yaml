@@ -1,0 +1,315 @@
+# Basic ECU Diagnostic Description
+# =================================
+# Demonstrates common features: sessions, DIDs, types, services, DTCs
+# This is a good starting point for most ECU diagnostic descriptions.
+
+schema: "opensovd.cda.diagdesc/v1"
+
+meta:
+  author: "Development Team"
+  domain: "Powertrain"
+  created: "2026-01-22"
+  revision: "1.0.0"
+  description: "Basic powertrain ECU with common diagnostics"
+  tags: [powertrain, engine, uds, example]
+
+# -----------------------------------------------------------------------------
+# ECU DEFINITION
+# -----------------------------------------------------------------------------
+ecu:
+  id: "ENGINE_ECU"
+  name: "Engine Control Unit"
+  protocols:
+    doip:
+      protocol_short_name: "UDSonDoIP"
+      is_default: true
+  default_addressing_mode: physical
+  addressing:
+    doip:
+      ip: "192.168.0.50"
+      port: 13400
+      logical_address: 0x0E00
+      tester_address: 0x0E80
+      functional_address: 0xE400
+    timing:
+      p2_ms: 50
+      p2_star_ms: 5000
+      s3_ms: 5000
+
+# -----------------------------------------------------------------------------
+# SESSIONS
+# -----------------------------------------------------------------------------
+sessions:
+  default:
+    id: 0x01
+    alias: "defaultSession"
+
+  extended:
+    id: 0x03
+    alias: "extendedDiagnosticSession"
+
+  programming:
+    id: 0x02
+    requires_unlock: true
+
+# -----------------------------------------------------------------------------
+# SECURITY
+# -----------------------------------------------------------------------------
+security:
+  level_01:
+    level: 1
+    seed_request: 0x01
+    key_send: 0x02
+    seed_size: 4
+    key_size: 4
+    algorithm: "simple_xor"
+    max_attempts: 3
+    delay_on_fail_ms: 10000
+    allowed_sessions: [extended, programming]
+
+# -----------------------------------------------------------------------------
+# ACCESS PATTERNS
+# -----------------------------------------------------------------------------
+access_patterns:
+  public:
+    sessions: any
+    security: none
+    authentication: none
+
+  extended_read:
+    sessions: [default, extended]
+    security: none
+    authentication: none
+
+  extended_write:
+    sessions: [extended]
+    security: [level_01]
+    authentication: none
+
+  programming_only:
+    sessions: [programming]
+    security: [level_01]
+    authentication: none
+
+# -----------------------------------------------------------------------------
+# SERVICES
+# -----------------------------------------------------------------------------
+services:
+  diagnosticSessionControl:
+    enabled: true
+
+  ecuReset:
+    enabled: true
+    subfunctions:
+      hardReset: 0x01
+      softReset: 0x03
+
+  securityAccess:
+    enabled: true
+
+  testerPresent:
+    enabled: true
+
+  readDataByIdentifier:
+    enabled: true
+
+  writeDataByIdentifier:
+    enabled: true
+
+  clearDiagnosticInformation:
+    enabled: true
+
+  readDTCInformation:
+    enabled: true
+    subfunctions: [0x01, 0x02, 0x03, 0x04, 0x06, 0x0A]
+
+# -----------------------------------------------------------------------------
+# TYPES
+# -----------------------------------------------------------------------------
+types:
+  # Engine measurements
+  rpm_type:
+    base: u16
+    endian: big
+    scale: 0.25
+    offset: 0
+    unit: "rpm"
+    constraints:
+      physical: [0, 16383.75]
+
+  temperature_type:
+    base: u8
+    scale: 1
+    offset: -40
+    unit: "degC"
+    constraints:
+      physical: [-40, 215]
+
+  percentage_type:
+    base: u8
+    scale: 0.392157
+    offset: 0
+    unit: "%"
+    constraints:
+      physical: [0, 100]
+
+  voltage_type:
+    base: u16
+    endian: big
+    scale: 0.001
+    offset: 0
+    unit: "V"
+
+  # Identification types
+  vin_type:
+    base: ascii
+    length: 17
+    encoding: "US-ASCII"
+    pattern: "^[A-HJ-NPR-Z0-9]{17}$"
+
+  part_number_type:
+    base: ascii
+    length: 24
+    encoding: "US-ASCII"
+
+# -----------------------------------------------------------------------------
+# DIDs - IDENTIFICATION
+# -----------------------------------------------------------------------------
+dids:
+  0xF190:
+    name: "VIN"
+    description: "Vehicle Identification Number"
+    type: vin_type
+    access: public
+    readable: true
+    writable: false
+
+  0xF191:
+    name: "ECUHardwareNumber"
+    description: "ECU Hardware Part Number"
+    type:
+      base: ascii
+      length: 16
+      encoding: "US-ASCII"
+    access: public
+    readable: true
+    writable: false
+
+  0xF193:
+    name: "SystemSupplierSoftwareNumber"
+    description: "Supplier Software Version"
+    type:
+      base: ascii
+      length: 16
+      encoding: "US-ASCII"
+    access: public
+    readable: true
+    writable: false
+
+  # -----------------------------------------------------------------------------
+  # DIDs - LIVE DATA
+  # -----------------------------------------------------------------------------
+  0x1001:
+    name: "EngineSpeed"
+    description: "Engine rotational speed"
+    type: rpm_type
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1002:
+    name: "EngineCoolantTemperature"
+    description: "Engine coolant temperature"
+    type: temperature_type
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1003:
+    name: "ThrottlePosition"
+    description: "Throttle position sensor value"
+    type: percentage_type
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: true
+
+  0x1004:
+    name: "ControlModuleVoltage"
+    description: "ECU supply voltage"
+    type: voltage_type
+    access: extended_read
+    readable: true
+    writable: false
+    snapshot: true
+
+  # -----------------------------------------------------------------------------
+  # DIDs - WRITABLE (with security)
+  # -----------------------------------------------------------------------------
+  0x2001:
+    name: "EngineIdleSpeed"
+    description: "Target idle speed setpoint"
+    type:
+      base: u16
+      endian: big
+      unit: "rpm"
+      constraints:
+        physical: [500, 1500]
+    access: extended_write
+    readable: true
+    writable: true
+
+# -----------------------------------------------------------------------------
+# DTC CONFIGURATION
+# -----------------------------------------------------------------------------
+dtc_config:
+  status_availability_mask: 0x7F
+  snapshots:
+    currentSnapshot:
+      record_number: 0x01
+      trigger: testFailed
+      dids: [0x1001, 0x1002, 0x1003, 0x1004]
+  extended_data:
+    occurrenceCounter:
+      record_number: 0x01
+      type:
+        base: u8
+      trigger: onTestFailed
+
+# -----------------------------------------------------------------------------
+# DTCs
+# -----------------------------------------------------------------------------
+dtcs:
+  0x010300:
+    name: "MAFCircuitMalfunction"
+    sae: "P0103"
+    description: "Mass Air Flow Circuit High"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  0x011600:
+    name: "CoolantTempSensorRange"
+    sae: "P0116"
+    description: "Engine Coolant Temperature Sensor Range/Performance"
+    severity: 3
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  0x012100:
+    name: "ThrottlePositionSensorRange"
+    sae: "P0121"
+    description: "Throttle Position Sensor A Circuit Range/Performance"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
+
+  0x056200:
+    name: "SystemVoltageLow"
+    sae: "P0562"
+    description: "System Voltage Low"
+    severity: 2
+    snapshots: [currentSnapshot]
+    extended_data: [occurrenceCounter]
