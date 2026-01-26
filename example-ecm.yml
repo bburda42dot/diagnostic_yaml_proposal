@@ -1,7 +1,10 @@
 # =============================================================================
 # Example: Engine Control Module - Diagnostic Description
 # =============================================================================
-# A complete example demonstrating OpenSOVD CDA Schema v1 features
+# A complete example demonstrating OpenSOVD CDA Schema v1 features including:
+# - State model and transitions
+# - Variant detection (bootloader vs application)
+# - Annotations (SDG-style metadata)
 # =============================================================================
 
 schema: "opensovd.cda.diagdesc/v1"
@@ -10,10 +13,14 @@ meta:
   author: "CDA Team"
   domain: "Variant"
   created: "2026-01-12"
-  revision: "1.0.0"
+  revision: "1.1.0"
   description: "Engine Control Module - UDS Diagnostic Configuration"
   tags: [powertrain, engine, uds, example]
   revisions:
+    - version: "1.1.0"
+      date: "2026-01-19"
+      author: "CDA Team"
+      changes: "Added state_model, variants, and annotations"
     - version: "1.0.0"
       date: "2026-01-12"
       author: "CDA Team"
@@ -25,6 +32,18 @@ meta:
 ecu:
   id: "ECM_01"
   name: "Engine Control Module"
+
+  protocols:
+    doip:
+      protocol_short_name: "UDSonDoIP"
+      description: "UDS over DoIP for service bay diagnostics"
+      is_default: true
+    can:
+      protocol_short_name: "UDSonCAN"
+      description: "UDS over CAN for on-board diagnostics"
+
+  # Global default addressing mode for all services (can be overridden per service)
+  default_addressing_mode: physical
 
   addressing:
     doip:
@@ -43,6 +62,107 @@ ecu:
       p2_star_ms: 5000
       s3_ms: 5000
 
+  # ECU-level annotations for client-specific quirks and metadata
+  annotations:
+    supplier: "ACME Electronics"
+    specification_version: "2.3"
+    tester_present_interval_ms: 2000
+    requires_wake_on_lan: false
+    known_issues: ["P2* timeout sometimes requires 6000ms on cold start"]
+
+# -----------------------------------------------------------------------------
+# AUDIENCE - Top-level audience gating (ODX Audience concept)
+# -----------------------------------------------------------------------------
+audience:
+  supplier: true
+  development: true
+  manufacturing: true
+  aftersales: true
+  aftermarket: false # Not visible to aftermarket tools by default
+  groups: ["internal", "partner_oems"]
+
+# -----------------------------------------------------------------------------
+# SDGs - Special Data Groups (ODX SDG concept, hierarchical metadata)
+# -----------------------------------------------------------------------------
+sdgs:
+  documentation:
+    si: "DOC"
+    caption: "Documentation"
+    values:
+      - si: "DESCRIPTION"
+        ti: "en"
+        value: "Engine Control Module diagnostic specification"
+      - si: "DESCRIPTION"
+        ti: "de"
+        value: "Motor-Steuergerät Diagnosespezifikation"
+      - si: "VERSION_INFO"
+        caption: "Version Information"
+        values:
+          - si: "SCHEMA_VERSION"
+            value: "1.0"
+          - si: "ODX_COMPAT"
+            value: "ODX 2.2.0"
+  calibration:
+    si: "CAL"
+    caption: "Calibration Data"
+    values:
+      - si: "CAL_REVISION"
+        value: "R2026.01"
+
+# -----------------------------------------------------------------------------
+# COMPARAMS - Communication Parameters (ODX COMPARAM concept)
+# -----------------------------------------------------------------------------
+comparams:
+  # Parameter specifications (typed definitions with constraints)
+  specs:
+    TCP_CONNECT_TIMEOUT_MS:
+      cptype: uint32
+      unit: "ms"
+      description: "TCP connection establishment timeout"
+      default_value: 1000
+      min: 100
+      max: 30000
+      override_levels: [ecu, protocol, global]
+    P2_Client:
+      cptype: uint16
+      unit: "ms"
+      description: "Client-side P2 timeout"
+      default_value: 50
+      min: 10
+      max: 5000
+    CP_MaxNumberOfRespPending:
+      cptype: uint8
+      description: "Max ResponsePending (0x78) before timeout"
+      default_value: 10
+      min: 1
+      max: 255
+
+  # Global defaults (apply to all protocols)
+  global:
+    P2_Client: 50
+    P2_Star_Client: 5000
+    CP_MaxNumberOfRespPending: 10
+
+  doip:
+    TCP_CONNECT_TIMEOUT_MS:
+      value: 2000
+      type: "uint32"
+      unit: "ms"
+      default: 1000
+      description: "TCP connection establishment timeout"
+    VEHICLE_ANNOUNCEMENT_TIMEOUT_MS: 5000
+    ROUTING_ACTIVATION_TYPE: 0x00
+  can:
+    CAN_FD_ENABLED: false
+    MAX_DLC: 8
+    PADDING_BYTE: 0xAA
+  uds:
+    SUPPRESS_POSITIVE_RESPONSE_SUPPORTED: true
+    MAX_NUMBER_OF_BLOCK_LENGTH: 4094
+  iso15765:
+    BS: 0x00 # Block Size
+    STMIN_MS: 10 # Separation Time minimum
+
 # -----------------------------------------------------------------------------
 # SESSIONS
 # -----------------------------------------------------------------------------
@@ -60,6 +180,27 @@ sessions:
   extended:
     id: 0x03
     alias: "extendedDiagnosticSession"
+
+# -----------------------------------------------------------------------------
+# STATE MODEL - Defines ECU state machine and transitions
+# -----------------------------------------------------------------------------
+state_model:
+  # State after power-on or hard reset
+  initial_state:
+    session: default
+    security: none # Locked
+    authentication_role: none
+
+  # Allowed session transitions (from -> [to])
+  session_transitions:
+    default: [extended, programming]
+    extended: [default, programming]
+    programming: [default, extended]
+
+  # Session change behavior
+  session_change_resets_security: true # Changing session locks security
+  session_change_resets_authentication: true # Changing session clears auth role
+  s3_timeout_resets_to_default: true # No testerPresent -> return to default
 
 # -----------------------------------------------------------------------------
 # SECURITY
@@ -127,12 +268,241 @@ authentication:
       proof_of_ownership: false
 
 # -----------------------------------------------------------------------------
+# IDENTIFICATION - Reusable expected identification checks (ODX ExpectedIdent style)
+# -----------------------------------------------------------------------------
+identification:
+  expected_idents:
+    # Bootloader identification: multiple conditions that must all match
+    bootloader_ident:
+      description: "ECU is in bootloader mode"
+      conditions:
+        - did_match:
+            did: 0xF1F0 # Boot flag DID
+            value_equals: 0x01 # Boot flag = 1
+        - did_match:
+            did: 0xF1F1 # Application status DID
+            bitmask:
+              mask: 0x80
+              expected: 0x00 # Application not running (bit 7 = 0)
+      probe_context:
+        session: default # Probe in default session
+
+    # Application V2 identification
+    application_v2_ident:
+      description: "Application software version 2.x"
+      conditions:
+        - did_match:
+            did: 0xF195 # SW version DID
+            value_starts_with: "2."
+        - did_match:
+            did: 0xF1F0 # Boot flag DID
+            value_equals: 0x00 # Boot flag = 0 (not in bootloader)
+
+    # ECU manufacturer identification
+    manufacturer_ident:
+      description: "Verify ECU manufacturer"
+      conditions:
+        - did_match:
+            did: 0xF18A # System supplier ID
+            value_equals: "ACME Electronics"
+
+    # response_param_match example using param_id (ODX MatchingParameter equivalent)
+    # Preferred method: uses stable param_id instead of dotted path
+    hw_variant_a_ident:
+      description: "Hardware variant A identification via response parameter matching"
+      conditions:
+        - response_param_match:
+            service: readDataByIdentifier
+            request_params:
+              did: 0xF192 # Hardware version DID
+            response_type: positive
+            param_id: "HW_VARIANT_CODE" # Reference by stable param_id
+            expected_value: "VARIANT_A"
+        - response_param_match:
+            service: readDataByIdentifier
+            request_params:
+              did: 0xF192
+            param_id: "HW_REVISION" # Reference by stable param_id
+            value_starts_with: "REV_"
+      probe_context:
+        session: extended
+
+    # Alternative: response_param_match using param_path (dotted path notation)
+    hw_variant_b_ident:
+      description: "Hardware variant B identification using param_path"
+      conditions:
+        - response_param_match:
+            service: readDataByIdentifier
+            request_params:
+              did: 0xF192
+            param_path: "hwInfo.variantCode" # Dotted path to response field
+            expected_value: "VARIANT_B"
+      probe_context:
+        session: extended
+
+# -----------------------------------------------------------------------------
+# VARIANTS - Boot/Application detection and variant-specific overrides
+# -----------------------------------------------------------------------------
+variants:
+  # Order matters: first matching variant is selected
+  detection_order: [bootloader, hw_variant_a, application_v2, application_v1]
+  fallback: unknown
+
+  definitions:
+    bootloader:
+      description: "ECU in bootloader/flashing mode"
+      detect:
+        # Reference pre-defined identification check (preferred for complex checks)
+        ident_ref: bootloader_ident
+      overrides:
+        services:
+          # In bootloader, most services are disabled except flashing
+          readDataByIdentifier:
+            enabled: true
+          writeDataByIdentifier:
+            enabled: false
+          routineControl:
+            enabled: true
+          clearDiagnosticInformation:
+            enabled: false
+          readDTCInformation:
+            enabled: false
+          inputOutputControlByIdentifier:
+            enabled: false
+          requestDownload:
+            enabled: true
+          requestUpload:
+            enabled: true
+          transferData:
+            enabled: true
+          requestTransferExit:
+            enabled: true
+        state_model:
+          # Bootloader starts in programming session
+          initial_state:
+            session: programming
+            security: none
+            authentication_role: none
+      annotations:
+        mode: "bootloader"
+        flash_supported: true
+        diagnostic_limited: true
+
+    # Variant using response_param_match with param_id (preferred method)
+    hw_variant_a:
+      description: "Hardware variant A - uses response_param_match with param_id for detection"
+      detect:
+        # Using response_param_match with stable param_id
+        response_param_match:
+          service: readDataByIdentifier
+          request_params:
+            did: 0xF192
+          param_id: "HW_VARIANT_CODE" # Reference by stable param_id
+          expected_value: "VARIANT_A"
+        probe_context:
+          session: extended
+      overrides:
+        # Variant A has special calibration DIDs
+        dids:
+          0x3003:
+            name: "VariantACalibration"
+            type:
+              base: u16
+              endian: big
+            access: extended_write
+            readable: true
+            writable: true
+            snapshot: false
+      annotations:
+        hw_variant: "A"
+        pcb_revision: "REV_03"
+
+    application_v2:
+      description: "Application software version 2.x"
+      # Inheritance configuration - extends base application config
+      inheritance:
+        mode: merge # Deep merge with base, v2 takes precedence
+        extends: application_v1
+        merge_arrays: append # Add v2 items after v1 items
+        allow_delete: false
+      detect:
+        # Option A: Reference pre-defined ident
+        ident_ref: application_v2_ident
+        # Option B (inline): match_all with multiple conditions
+        # match_all:
+        #   - did_match:
+        #       did: 0xF195
+        #       value_starts_with: "2."
+        #   - did_match:
+        #       did: 0xF1F0
+        #       value_equals: 0x00
+      overrides:
+        # V2 has additional routines available
+        routines:
+          0xFF03:
+            name: "AdvancedDiagnostics"
+            access: factory_access
+            operations: [start, result]
+      annotations:
+        sw_generation: 2
+        supports_advanced_diag: true
+
+    application_v1:
+      description: "Application software version 1.x (legacy)"
+      detect:
+        # Example: inline match_all with multiple conditions (no ident_ref)
+        match_all:
+          - did_match:
+              did: 0xF195
+              value_starts_with: "1." # SW version starts with "1."
+          - did_match:
+              did: 0xF1F0
+              value_equals: 0x00 # Boot flag = 0 (not in bootloader)
+        probe_context:
+          session: extended # Probe after entering extended session
+      annotations:
+        sw_generation: 1
+        supports_advanced_diag: false
+        known_issues: ["Throttle adaptation may timeout on first attempt"]
+
+    unknown:
+      description: "Unknown variant - safe mode with minimal access"
+      detect:
+        # Fallback: uses match_any - matches if ANY condition is true
+        match_any:
+          - session_available: [default]
+          - service_responds:
+              service: diagnosticSessionControl
+              subfunction: 0x01
+      overrides:
+        services:
+          # Only allow safe read operations
+          writeDataByIdentifier:
+            enabled: false
+          inputOutputControlByIdentifier:
+            enabled: false
+          routineControl:
+            enabled: false
+          requestDownload:
+            enabled: false
+          requestUpload:
+            enabled: false
+      annotations:
+        mode: "safe"
+        reason: "Variant could not be determined"
+
+# -----------------------------------------------------------------------------
 # SERVICES
 # -----------------------------------------------------------------------------
 services:
   diagnosticSessionControl:
     enabled: true
     subfunctions: [0x01, 0x02, 0x03]
+    state_effects:
+      on_success:
+        session: from_request # Session changes to requested session
+        security: none # Security resets to locked
+        authentication_role: none # Authentication cleared
 
   ecuReset:
     enabled: true
@@ -140,9 +510,27 @@ services:
       hardReset: 0x01
       keyOffOnReset: 0x02
       softReset: 0x03
+    state_effects:
+      hardReset:
+        session: default # Hard reset returns to default session
+        security: none # Security locked
+        authentication_role: none # Auth cleared
+      keyOffOnReset:
+        session: default
+        security: none
+        authentication_role: none
+      softReset:
+        session: unchanged # Soft reset preserves session
+        security: none # But resets security
+        authentication_role: none
 
   securityAccess:
     enabled: true
+    state_effects:
+      on_unlock:
+        session: unchanged
+        security: from_request # Level set based on which key was sent
+        authentication_role: unchanged
 
   authentication:
     enabled: true
@@ -153,6 +541,15 @@ services:
       proofOfOwnership: 0x03
       transmitCertificate: 0x04
       authenticationConfiguration: 0x08
+    state_effects:
+      on_authenticate:
+        session: unchanged
+        security: unchanged
+        authentication_role: from_request # Role set based on certificate
+      on_deauthenticate:
+        session: unchanged
+        security: unchanged
+        authentication_role: none # Clear auth role
 
   testerPresent:
     enabled: true
@@ -162,6 +559,39 @@ services:
 
   readDataByIdentifier:
     enabled: true
+    addressing_mode: "physical"
+    # request_layout: use_uds_defaults: true (implicit)
+    response_outputs:
+      hwInfo:
+        name: "hwInfo"
+        param_id: "HW_INFO_STRUCT"
+        short_name: "HardwareInfo"
+        type:
+          base: struct
+          size: 32
+          fields:
+            - name: variantCode
+            - name: revision
+            - name: serialNumber
+        children:
+          - name: "variantCode"
+            param_id: "HW_VARIANT_CODE"
+            type:
+              base: ascii
+              length: 10
+              encoding: "US-ASCII"
+          - name: "revision"
+            param_id: "HW_REVISION"
+            type:
+              base: ascii
+              length: 8
+              encoding: "US-ASCII"
+          - name: "serialNumber"
+            param_id: "HW_SERIAL"
+            type:
+              base: ascii
+              length: 14
+              encoding: "US-ASCII"
 
   readMemoryByAddress:
     enabled: false
@@ -278,6 +708,89 @@ services:
       verifyModeTransitionWithFixedParameter: 0x01
       verifyModeTransitionWithSpecificParameter: 0x02
 
+  # Custom/OEM-specific services
+  custom:
+    readVehicleStatus:
+      sid: 0xB1
+      description: "OEM service to read comprehensive vehicle status"
+      addressing_mode: physical
+      request_layout:
+        use_uds_defaults: false
+        parameters:
+          - name: "statusType"
+            byte_position: 1
+            bit_length: 8
+            semantic: subfunction
+      positive_response:
+        sid: 0xF1
+        parameters:
+          - name: statusByte
+            param_id: "STATUS_BYTE"
+            semantic: status
+            byte_position: 1
+            bit_length: 8
+            type:
+              base: u8
+          - name: faultCount
+            param_id: "FAULT_COUNT"
+            semantic: count
+            byte_position: 2
+            bit_length: 8
+            count_of: faultList
+          - name: faultList
+            param_id: "FAULT_LIST"
+            semantic: data
+            byte_position: 3
+            type:
+              base: u16
+              endian: big
+            condition:
+              if_in_range:
+                param: "FAULT_COUNT"
+                min: 1
+                max: 255
+        structure:
+          endian: big
+          elements:
+            - name: header
+              byte_position: 0
+              bit_length: 8
+              semantic: sid
+            - name: statusByte
+              byte_position: 1
+              bit_length: 8
+              semantic: status
+              type: { base: u8 }
+            - name: faultCount
+              byte_position: 2
+              bit_length: 8
+              semantic: count
+              type: { base: u8 }
+            - group_name: faultGroup
+              repeat:
+                count_param: faultCount
+                min_count: 0
+                max_count: 100
+              elements:
+                - name: faultCode
+                  type:
+                    base: u16
+                    endian: big
+      negative_responses:
+        - nrc: 0x12
+          name: "subFunctionNotSupported"
+          description: "The requested status type is not supported"
+        - nrc: 0x22
+          name: "conditionsNotCorrect"
+          description: "Vehicle not in correct state for status read"
+        - nrc: 0x31
+          name: "requestOutOfRange"
+      access: extended_read
+      audience:
+        development: true
+        manufacturing: true
+        aftersales: true
+
 # -----------------------------------------------------------------------------
 # ACCESS PATTERNS
 # -----------------------------------------------------------------------------
@@ -327,6 +840,7 @@ types:
   rpm_type:
     base: u16
     endian: big
+    bit_length: 16
     scale: 0.25
     offset: 0
     unit: "rpm"
@@ -336,6 +850,7 @@ types:
 
   temperature_type:
     base: u8
+    bit_length: 8
     scale: 1
     offset: -40
     unit: "degC"
@@ -345,6 +860,7 @@ types:
 
   percentage_type:
     base: u8
+    bit_length: 8
     scale: 0.392157
     offset: 0
     unit: "%"
@@ -355,6 +871,7 @@ types:
   voltage_type:
     base: u16
     endian: big
+    bit_length: 16
     scale: 0.001
     offset: 0
     unit: "V"
@@ -364,6 +881,7 @@ types:
 
   pressure_kpa_type:
     base: u8
+    bit_length: 8
     scale: 1
     offset: 0
     unit: "kPa"
@@ -375,9 +893,9 @@ types:
   vin_type:
     base: ascii
     length: 17
+    encoding: "US-ASCII"
     pattern: "^[A-HJ-NPR-Z0-9]{17}$"
     validation:
-      # VIN cannot contain I, O, Q (confusion with 1, 0)
       forbidden_characters:
         - "I"
         - "O"
@@ -386,11 +904,19 @@ types:
   part_number_type:
     base: ascii
     length: 24
+    encoding: "US-ASCII"
     validation:
-      # Only printable ASCII allowed
       forbidden_characters:
-        - "(0x00..0x1F)" # Control characters
-        - "(0x7F..0xFF)" # DEL and extended ASCII
+        - "(0x00..0x1F)"
+        - "(0x7F..0xFF)"
+
+  # ADVANCED: Variable-length bytes type example (use fixed length when possible)
+  # Note: Variable-length types with termination: "length_field" require special handling
+  variable_data_type:
+    base: bytes
+    min_length: 1
+    max_length: 4094
+    termination: "end_of_pdu" # Consumes remaining PDU - simpler than length_field
 
   # Enumeration types
   session_type:
@@ -399,6 +925,39 @@ types:
       0x01: defaultSession
       0x02: programmingSession
       0x03: extendedDiagnosticSession
+
+  # Text table with ranges (ODX TEXT-TABLE equivalent)
+  gear_position_type:
+    base: u8
+    entries:
+      - value: 0x00
+        text: "Park"
+        description: "Parking position"
+      - value: 0x01
+        text: "Reverse"
+      - range: [0x02, 0x08]
+        text: "Drive"
+        description: "Forward gears 1-7"
+      - value: 0x0F
+        text: "Neutral"
+    default_text: "Unknown"
+
+  # Example with full linear conversion
+  battery_voltage_type:
+    base: u16
+    endian: big
+    conversion:
+      scale: 1
+      offset: 0
+      divisor: 1000
+      unit: "V"
+      internal_constraints: [0, 65535]
+      physical_constraints: [0, 65.535]
+
+  # Bitmask example
+  status_flags_type:
+    base: u8
+    bitmask: 0x0F # Only lower 4 bits used
 
   fuel_system_status_type:
     base: u8
@@ -431,6 +990,10 @@ dids:
     readable: true
     writable: false
     snapshot: false
+    annotations:
+      iso_standard: "ISO 3779"
+      display_format: "plaintext"
+      ui_category: "Identification"
 
   0xF187:
     name: "VehicleManufacturerSparePartNumber"
@@ -629,6 +1192,11 @@ routines:
     description: "Individual cylinder power contribution test"
     access: actuator_control
     operations: [start, stop, result]
+    annotations:
+      requires_engine_running: true
+      min_coolant_temp_c: 60
+      max_duration_s: 30
+      safety_critical: true
     parameters:
       start:
         input:
@@ -685,6 +1253,23 @@ routines:
             type:
               base: u16
               endian: big
+
+  # NEW: Development-only routine with audience gating
+  0xFFFE:
+    name: "InternalDebugDump"
+    description: "Dump internal debug data - DEVELOPMENT ONLY"
+    access: factory_access
+    operations: [start, result]
+    # Audience gating: only visible in development context
+    audience:
+      supplier: true
+      development: true
+      manufacturing: false
+      aftersales: false
+      aftermarket: false
+    annotations:
+      internal_use: true
+      log_to_console: true
 
 # -----------------------------------------------------------------------------
 # DTC CONFIGURATION
@@ -813,7 +1398,102 @@ dtcs:
       note: "OEM classifier/tag for this DTC (optional)"
 
 # -----------------------------------------------------------------------------
+# GLOBAL ANNOTATIONS - SDG-style metadata for client-specific behavior
+# -----------------------------------------------------------------------------
+annotations:
+  # Feature flags
+  supports_doip: true
+  supports_can: true
+  supports_uds_on_can_fd: false
+
+  # Client behavior hints
+  recommended_tester_present_ms: 2000
+  flash_requires_battery_check: true
+
+  # Documentation references
+  oem_spec_document: "ECM-DIAG-SPEC-2026-001"
+  iso_compliance: ["ISO 14229-1:2020", "ISO 13400-2:2019"]
+
+  # Known quirks / workarounds (SDG use case)
+  quirks:
+    - "P2* may exceed 5000ms during throttle adaptation"
+    - "Security access delay resets on session change"
+
+# -----------------------------------------------------------------------------
 # X-OEM EXTENSIONS
 # -----------------------------------------------------------------------------
 x-oem:
   note: "Placeholder for OEM extensions (kept minimal in this example)"
+  internal_project_code: "ECM-2026-ALPHA"
+
+# -----------------------------------------------------------------------------
+# ECU JOBS - OEM-specific programmed sequences
+# -----------------------------------------------------------------------------
+ecu_jobs:
+  flash_ecu:
+    name: "FlashECU"
+    description: "Complete ECU flash programming job"
+    prog_code: "FLASH_ECU_V1"
+    input_params:
+      - name: "session"
+        semantic: "session"
+        type:
+          base: u8
+        default_value: 0x02
+      - name: "securityLevel"
+        semantic: "data"
+        type:
+          base: u8
+        default_value: 0x11
+      - name: "flashData"
+        type:
+          base: bytes
+          min_length: 1
+          max_length: 1048576
+    output_params:
+      - name: "flashStatus"
+        type:
+          base: u8
+          enum:
+            0: success
+            1: failed
+            2: checksum_error
+      - name: "bytesWritten"
+        type:
+          base: u32
+          endian: big
+    neg_output_params:
+      - name: "errorCode"
+        type:
+          base: u8
+    access: "programming_only"
+    audience:
+      supplier: true
+      development: true
+      manufacturing: true
+      aftersales: false
+      aftermarket: false
+    annotations:
+      requires_battery_support: true
+      estimated_duration_s: 300
+
+  read_eeprom:
+    name: "ReadEEPROM"
+    description: "Read EEPROM calibration data"
+    prog_code: "READ_EEPROM_V1"
+    input_params:
+      - name: "startAddress"
+        type:
+          base: u32
+          endian: big
+      - name: "length"
+        type:
+          base: u16
+          endian: big
+    output_params:
+      - name: "data"
+        type:
+          base: bytes
+          min_length: 1
+          max_length: 4096
+    access: "factory_access"
