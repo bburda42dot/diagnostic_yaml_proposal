@@ -18,7 +18,7 @@ YAML_TO_MDD_DIR="$SCRIPT_DIR/yaml-to-mdd"
 OUTPUT_DIR="$SCRIPT_DIR/.output"
 
 # Defaults
-PORT=8080
+PORT=20002
 NO_DOCKER=false
 VERBOSE=false
 FORCE_BUILD=false
@@ -37,7 +37,7 @@ print_usage() {
     echo ""
     echo "Options:"
     echo "  --no-docker    Only convert, don't run CDA"
-    echo "  --port PORT    HTTP port for CDA (default: 8080)"
+    echo "  --port PORT    HTTP port for CDA (default: 20002)"
     echo "  --build        Force rebuild of CDA Docker image"
     echo "  --clean        Remove existing .mdd files before converting"
     echo "  -v, --verbose  Verbose output"
