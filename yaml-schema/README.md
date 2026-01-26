@@ -13,14 +13,14 @@ The schema describes diagnostic capabilities of an ECU for automotive diagnostic
 
 ## Files
 
-| File | Description |
-|------|-------------|
-| [schema.json](schema.json) | JSON Schema (draft 2020-12) - the normative reference |
-| [SCHEMA.md](SCHEMA.md) | Detailed schema documentation with examples |
-| [ODX_YAML_MAPPING.md](ODX_YAML_MAPPING.md) | Mapping between ODX and YAML concepts |
-| [example-ecm.yml](example-ecm.yml) | Complete example: Engine Control Module |
-| [minimal-ecu.yml](minimal-ecu.yml) | Minimal valid configuration |
-| [validate.py](validate.py) | Python script to validate YAML against schema |
+| File                                       | Description                                           |
+| ------------------------------------------ | ----------------------------------------------------- |
+| [schema.json](schema.json)                 | JSON Schema (draft 2020-12) - the normative reference |
+| [SCHEMA.md](SCHEMA.md)                     | Detailed schema documentation with examples           |
+| [ODX_YAML_MAPPING.md](ODX_YAML_MAPPING.md) | Mapping between ODX and YAML concepts                 |
+| [example-ecm.yml](example-ecm.yml)         | Complete example: Engine Control Module               |
+| [minimal-ecu.yml](minimal-ecu.yml)         | Minimal valid configuration                           |
+| [validate.py](validate.py)                 | Python script to validate YAML against schema         |
 
 ## Schema Version
 
@@ -88,27 +88,27 @@ python validate.py example-ecm.yml minimal-ecu.yml
 
 ### Required Top-Level Fields
 
-| Field | Description |
-|-------|-------------|
-| `schema` | Must be `opensovd.cda.diagdesc/v1` |
-| `meta` | Document metadata (author, revision, etc.) |
-| `ecu` | ECU identity and addressing (DoIP/CAN) |
-| `sessions` | Diagnostic sessions supported |
-| `services` | UDS services enabled/configured |
-| `access_patterns` | Reusable access control definitions |
+| Field             | Description                                |
+| ----------------- | ------------------------------------------ |
+| `schema`          | Must be `opensovd.cda.diagdesc/v1`         |
+| `meta`            | Document metadata (author, revision, etc.) |
+| `ecu`             | ECU identity and addressing (DoIP/CAN)     |
+| `sessions`        | Diagnostic sessions supported              |
+| `services`        | UDS services enabled/configured            |
+| `access_patterns` | Reusable access control definitions        |
 
 ### Optional Top-Level Fields
 
-| Field | Description |
-|-------|-------------|
-| `security` | UDS 0x27 security access levels |
+| Field            | Description                           |
+| ---------------- | ------------------------------------- |
+| `security`       | UDS 0x27 security access levels       |
 | `authentication` | UDS 0x29 authentication configuration |
-| `types` | Reusable data type definitions |
-| `dids` | Data Identifiers (0x22/0x2E/0x2F) |
-| `routines` | Routine Control definitions (0x31) |
-| `dtc_config` | DTC snapshot/extended data config |
-| `dtcs` | Diagnostic Trouble Codes (0x19) |
-| `x-oem` | OEM-specific extensions |
+| `types`          | Reusable data type definitions        |
+| `dids`           | Data Identifiers (0x22/0x2E/0x2F)     |
+| `routines`       | Routine Control definitions (0x31)    |
+| `dtc_config`     | DTC snapshot/extended data config     |
+| `dtcs`           | Diagnostic Trouble Codes (0x19)       |
+| `x-oem`          | OEM-specific extensions               |
 
 ## Hex Values
 
@@ -123,20 +123,20 @@ logical_address: "0x0E00"  # Explicit string
 
 ## Supported UDS Services
 
-| SID | Service | Support |
-|-----|---------|---------|
-| 0x10 | DiagnosticSessionControl | Full |
-| 0x11 | ECUReset | Full |
-| 0x14 | ClearDiagnosticInformation | Full |
-| 0x19 | ReadDTCInformation | Full |
-| 0x22 | ReadDataByIdentifier | Full |
-| 0x27 | SecurityAccess | Full |
-| 0x29 | Authentication | Full |
-| 0x2E | WriteDataByIdentifier | Full |
-| 0x2F | InputOutputControlByIdentifier | Full |
-| 0x31 | RoutineControl | Full |
-| 0x3E | TesterPresent | Full |
-| 0x23, 0x24, 0x28, 0x2A, 0x2C, 0x34-0x38, 0x3D, 0x84-0x87 | Other services | Enable only |
+| SID                                                      | Service                        | Support     |
+| -------------------------------------------------------- | ------------------------------ | ----------- |
+| 0x10                                                     | DiagnosticSessionControl       | Full        |
+| 0x11                                                     | ECUReset                       | Full        |
+| 0x14                                                     | ClearDiagnosticInformation     | Full        |
+| 0x19                                                     | ReadDTCInformation             | Full        |
+| 0x22                                                     | ReadDataByIdentifier           | Full        |
+| 0x27                                                     | SecurityAccess                 | Full        |
+| 0x29                                                     | Authentication                 | Full        |
+| 0x2E                                                     | WriteDataByIdentifier          | Full        |
+| 0x2F                                                     | InputOutputControlByIdentifier | Full        |
+| 0x31                                                     | RoutineControl                 | Full        |
+| 0x3E                                                     | TesterPresent                  | Full        |
+| 0x23, 0x24, 0x28, 0x2A, 0x2C, 0x34-0x38, 0x3D, 0x84-0x87 | Other services                 | Enable only |
 
 ## Further Reading
 
