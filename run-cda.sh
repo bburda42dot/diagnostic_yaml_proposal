@@ -169,10 +169,10 @@ for yaml_file in "${YAML_FILES[@]}"; do
     
     if $YAML_TO_MDD_CMD "${CONVERT_ARGS[@]}"; then
         MDD_FILES+=("$mdd_file")
-        ((CONVERTED++))
+        ((++CONVERTED))
     else
         error "Failed to convert: $yaml_file"
-        ((FAILED++))
+        ((++FAILED))
     fi
 done
 
