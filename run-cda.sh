@@ -6,7 +6,7 @@
 # Options:
 #   --no-docker    Only convert, don't run CDA
 #   --port PORT    HTTP port for CDA (default: 8080)
-#   --image IMAGE  Docker image to use (default: ghcr.io/eclipse-opensovd/classic-diagnostic-adapter:latest)
+#   --build        Force rebuild of CDA Docker image
 #   -v, --verbose  Verbose output
 #   -h, --help     Show this help
 
@@ -18,9 +18,9 @@ OUTPUT_DIR="$SCRIPT_DIR/.output"
 
 # Defaults
 PORT=8080
-DOCKER_IMAGE="ghcr.io/eclipse-opensovd/classic-diagnostic-adapter:latest"
 NO_DOCKER=false
 VERBOSE=false
+FORCE_BUILD=false
 
 # Colors
 RED='\033[0;31m'
@@ -36,12 +36,12 @@ print_usage() {
     echo "Options:"
     echo "  --no-docker    Only convert, don't run CDA"
     echo "  --port PORT    HTTP port for CDA (default: 8080)"
-    echo "  --image IMAGE  Docker image to use"
+    echo "  --build        Force rebuild of CDA Docker image"
     echo "  -v, --verbose  Verbose output"
     echo "  -h, --help     Show this help"
     echo ""
     echo "Examples:"
-    echo "  $0 example-ecm.yml"
+    echo "  $0 yaml-schema/example-ecm.yml"
     echo "  $0 my-ecu.yaml --port 9090"
     echo "  $0 my-ecu.yaml --no-docker"
 }
@@ -74,9 +74,9 @@ while [[ $# -gt 0 ]]; do
             PORT="$2"
             shift 2
             ;;
-        --image)
-            DOCKER_IMAGE="$2"
-            shift 2
+        --build)
+            FORCE_BUILD=true
+            shift
             ;;
         -v|--verbose)
             VERBOSE=true
@@ -114,40 +114,32 @@ fi
 
 # Resolve absolute path
 YAML_FILE="$(cd "$(dirname "$YAML_FILE")" && pwd)/$(basename "$YAML_FILE")"
-YAML_BASENAME="$(basename "$YAML_FILE" .yml)"
-YAML_BASENAME="$(basename "$YAML_BASENAME" .yaml)"
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
-MDD_FILE="$OUTPUT_DIR/${YAML_BASENAME}.mdd"
+MDD_FILE="$OUTPUT_DIR/ecu.mdd"
 
 # Check if yaml-to-mdd is installed
 log "Checking yaml-to-mdd installation..."
-if ! command -v yaml-to-mdd &> /dev/null; then
-    warn "yaml-to-mdd not found in PATH, attempting to install..."
-    
-    if [[ -d "$YAML_TO_MDD_DIR" ]]; then
-        log "Installing yaml-to-mdd from $YAML_TO_MDD_DIR"
-        
-        # Try poetry first, then pip
-        if command -v poetry &> /dev/null; then
-            (cd "$YAML_TO_MDD_DIR" && poetry install)
-            # Use poetry run for the command
-            YAML_TO_MDD_CMD="poetry -C $YAML_TO_MDD_DIR run yaml-to-mdd"
-        else
-            pip install -e "$YAML_TO_MDD_DIR"
-            YAML_TO_MDD_CMD="yaml-to-mdd"
-        fi
-    else
-        error "yaml-to-mdd directory not found: $YAML_TO_MDD_DIR"
-        exit 1
-    fi
-else
+YAML_TO_MDD_CMD=""
+
+if command -v yaml-to-mdd &> /dev/null; then
     YAML_TO_MDD_CMD="yaml-to-mdd"
+elif command -v poetry &> /dev/null && [[ -f "$YAML_TO_MDD_DIR/pyproject.toml" ]]; then
+    log "Using poetry to run yaml-to-mdd..."
+    (cd "$YAML_TO_MDD_DIR" && poetry install --quiet 2>/dev/null || true)
+    YAML_TO_MDD_CMD="poetry -C $YAML_TO_MDD_DIR run yaml-to-mdd"
+elif [[ -d "$YAML_TO_MDD_DIR" ]]; then
+    warn "yaml-to-mdd not found, installing with pip..."
+    pip install -e "$YAML_TO_MDD_DIR" --quiet
+    YAML_TO_MDD_CMD="yaml-to-mdd"
+else
+    error "yaml-to-mdd not found and cannot be installed"
+    exit 1
 fi
 
 # Convert YAML to MDD
-log "Converting $YAML_FILE to MDD..."
+log "Converting $(basename "$YAML_FILE") to MDD..."
 CONVERT_ARGS=("convert" "$YAML_FILE" "-o" "$MDD_FILE")
 if [[ "$VERBOSE" == true ]]; then
     CONVERT_ARGS+=("-v")
@@ -163,6 +155,9 @@ fi
 # Stop here if --no-docker
 if [[ "$NO_DOCKER" == true ]]; then
     log "Done (--no-docker specified)"
+    echo ""
+    echo "To run CDA manually:"
+    echo "  CDA_PORT=$PORT docker compose up"
     exit 0
 fi
 
@@ -172,24 +167,37 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Run CDA
+# Check docker compose
+if ! docker compose version &> /dev/null; then
+    error "Docker Compose not found. Install Docker Compose plugin or use --no-docker"
+    exit 1
+fi
+
+# Build/run with docker compose
+cd "$SCRIPT_DIR"
+
 log "Starting OpenSOVD Classic Diagnostic Adapter..."
-log "  Image: $DOCKER_IMAGE"
 log "  Port: $PORT"
 log "  MDD: $MDD_FILE"
 
-CONTAINER_NAME="cda-${YAML_BASENAME}-$$"
+# Export port for docker-compose
+export CDA_PORT="$PORT"
 
-# Pull image if needed
-if [[ "$VERBOSE" == true ]]; then
-    log "Pulling Docker image..."
-    docker pull "$DOCKER_IMAGE"
+# Build options
+BUILD_ARGS=""
+if [[ "$FORCE_BUILD" == true ]]; then
+    BUILD_ARGS="--build"
 fi
 
-# Run container
-log "Starting container..."
-docker run --rm \
-    --name "$CONTAINER_NAME" \
-    -p "${PORT}:8080" \
-    -v "$MDD_FILE:/data/ecu.mdd:ro" \
-    "$DOCKER_IMAGE"
+# Check if image exists
+if ! docker image inspect diagnostic-yaml/cda:local &> /dev/null || [[ "$FORCE_BUILD" == true ]]; then
+    log "Building CDA image (this may take a few minutes on first run)..."
+    docker compose build
+fi
+
+log ""
+log "Starting CDA at http://localhost:$PORT"
+log "Press Ctrl+C to stop"
+log ""
+
+docker compose up $BUILD_ARGS
