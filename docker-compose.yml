@@ -1,14 +1,14 @@
 # Docker Compose for running OpenSOVD Classic Diagnostic Adapter
 #
 # Usage:
-#   1. Convert your YAML to MDD first:
-#      yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/ecu.mdd
+#   1. Convert your YAML files to MDD first:
+#      yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/example-ecm.mdd
 #
 #   2. Build and run:
 #      docker compose up --build
 #
 # Or use the convenience script:
-#   ./run-cda.sh yaml-schema/example-ecm.yml
+#   ./run-cda.sh yaml-schema/example-ecm.yml yaml-schema/minimal-ecu.yml
 
 services:
   cda:
@@ -23,7 +23,13 @@ services:
       - ./.output:/data:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info}
-      - CDA_MDD_PATH=/data/ecu.mdd
+    command:
+      - "-d"
+      - "/data"
+      - "--listen-port"
+      - "8080"
+      - "--listen-address"
+      - "0.0.0.0"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s

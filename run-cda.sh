@@ -1,12 +1,13 @@
 #!/bin/bash
-# run-cda.sh - Convert YAML to MDD and run OpenSOVD Classic Diagnostic Adapter
+# run-cda.sh - Convert YAML files to MDD and run OpenSOVD Classic Diagnostic Adapter
 #
-# Usage: ./run-cda.sh <yaml-file> [options]
+# Usage: ./run-cda.sh [options] <yaml-file> [yaml-file...]
 #
 # Options:
 #   --no-docker    Only convert, don't run CDA
 #   --port PORT    HTTP port for CDA (default: 8080)
 #   --build        Force rebuild of CDA Docker image
+#   --clean        Remove existing .mdd files before converting
 #   -v, --verbose  Verbose output
 #   -h, --help     Show this help
 
@@ -21,6 +22,7 @@ PORT=8080
 NO_DOCKER=false
 VERBOSE=false
 FORCE_BUILD=false
+CLEAN=false
 
 # Colors
 RED='\033[0;31m'
@@ -29,21 +31,23 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 print_usage() {
-    echo "Usage: $0 <yaml-file> [options]"
+    echo "Usage: $0 [options] <yaml-file> [yaml-file...]"
     echo ""
-    echo "Convert Diagnostic YAML to MDD and run OpenSOVD Classic Diagnostic Adapter"
+    echo "Convert Diagnostic YAML files to MDD and run OpenSOVD Classic Diagnostic Adapter"
     echo ""
     echo "Options:"
     echo "  --no-docker    Only convert, don't run CDA"
     echo "  --port PORT    HTTP port for CDA (default: 8080)"
     echo "  --build        Force rebuild of CDA Docker image"
+    echo "  --clean        Remove existing .mdd files before converting"
     echo "  -v, --verbose  Verbose output"
     echo "  -h, --help     Show this help"
     echo ""
     echo "Examples:"
     echo "  $0 yaml-schema/example-ecm.yml"
-    echo "  $0 my-ecu.yaml --port 9090"
-    echo "  $0 my-ecu.yaml --no-docker"
+    echo "  $0 yaml-schema/example-ecm.yml yaml-schema/minimal-ecu.yml"
+    echo "  $0 --port 9090 yaml-schema/*.yml"
+    echo "  $0 --no-docker yaml-schema/example-ecm.yml"
 }
 
 log() {
@@ -59,7 +63,7 @@ error() {
 }
 
 # Parse arguments
-YAML_FILE=""
+YAML_FILES=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -78,6 +82,10 @@ while [[ $# -gt 0 ]]; do
             FORCE_BUILD=true
             shift
             ;;
+        --clean)
+            CLEAN=true
+            shift
+            ;;
         -v|--verbose)
             VERBOSE=true
             shift
@@ -88,36 +96,35 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         *)
-            if [[ -z "$YAML_FILE" ]]; then
-                YAML_FILE="$1"
-            else
-                error "Multiple input files specified"
-                print_usage
-                exit 1
-            fi
+            YAML_FILES+=("$1")
             shift
             ;;
     esac
 done
 
-# Check input file
-if [[ -z "$YAML_FILE" ]]; then
-    error "No input YAML file specified"
+# Check input files
+if [[ ${#YAML_FILES[@]} -eq 0 ]]; then
+    error "No input YAML files specified"
     print_usage
     exit 1
 fi
 
-if [[ ! -f "$YAML_FILE" ]]; then
-    error "Input file not found: $YAML_FILE"
-    exit 1
-fi
-
-# Resolve absolute path
-YAML_FILE="$(cd "$(dirname "$YAML_FILE")" && pwd)/$(basename "$YAML_FILE")"
+# Verify all files exist
+for file in "${YAML_FILES[@]}"; do
+    if [[ ! -f "$file" ]]; then
+        error "Input file not found: $file"
+        exit 1
+    fi
+done
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
-MDD_FILE="$OUTPUT_DIR/ecu.mdd"
+
+# Clean if requested
+if [[ "$CLEAN" == true ]]; then
+    log "Cleaning existing .mdd files..."
+    rm -f "$OUTPUT_DIR"/*.mdd
+fi
 
 # Check if yaml-to-mdd is installed
 log "Checking yaml-to-mdd installation..."
@@ -138,19 +145,49 @@ else
     exit 1
 fi
 
-# Convert YAML to MDD
-log "Converting $(basename "$YAML_FILE") to MDD..."
-CONVERT_ARGS=("convert" "$YAML_FILE" "-o" "$MDD_FILE")
-if [[ "$VERBOSE" == true ]]; then
-    CONVERT_ARGS+=("-v")
-fi
+# Convert all YAML files to MDD
+CONVERTED=0
+FAILED=0
+MDD_FILES=()
 
-if $YAML_TO_MDD_CMD "${CONVERT_ARGS[@]}"; then
-    log "MDD file created: $MDD_FILE"
-else
-    error "Conversion failed"
+for yaml_file in "${YAML_FILES[@]}"; do
+    # Resolve absolute path
+    yaml_abs="$(cd "$(dirname "$yaml_file")" && pwd)/$(basename "$yaml_file")"
+    
+    # Generate output filename
+    basename="${yaml_file##*/}"
+    basename="${basename%.yml}"
+    basename="${basename%.yaml}"
+    mdd_file="$OUTPUT_DIR/${basename}.mdd"
+    
+    log "Converting $yaml_file -> $(basename "$mdd_file")"
+    
+    CONVERT_ARGS=("convert" "$yaml_abs" "-o" "$mdd_file")
+    if [[ "$VERBOSE" == true ]]; then
+        CONVERT_ARGS+=("-v")
+    fi
+    
+    if $YAML_TO_MDD_CMD "${CONVERT_ARGS[@]}"; then
+        MDD_FILES+=("$mdd_file")
+        ((CONVERTED++))
+    else
+        error "Failed to convert: $yaml_file"
+        ((FAILED++))
+    fi
+done
+
+log "Conversion complete: $CONVERTED succeeded, $FAILED failed"
+
+if [[ $CONVERTED -eq 0 ]]; then
+    error "No files were converted successfully"
     exit 1
 fi
+
+# List generated MDD files
+log "Generated MDD files in $OUTPUT_DIR:"
+for mdd in "${MDD_FILES[@]}"; do
+    echo "  - $(basename "$mdd")"
+done
 
 # Stop here if --no-docker
 if [[ "$NO_DOCKER" == true ]]; then
@@ -178,16 +215,10 @@ cd "$SCRIPT_DIR"
 
 log "Starting OpenSOVD Classic Diagnostic Adapter..."
 log "  Port: $PORT"
-log "  MDD: $MDD_FILE"
+log "  Databases: $OUTPUT_DIR (${#MDD_FILES[@]} files)"
 
 # Export port for docker-compose
 export CDA_PORT="$PORT"
-
-# Build options
-BUILD_ARGS=""
-if [[ "$FORCE_BUILD" == true ]]; then
-    BUILD_ARGS="--build"
-fi
 
 # Check if image exists
 if ! docker image inspect diagnostic-yaml/cda:local &> /dev/null || [[ "$FORCE_BUILD" == true ]]; then
@@ -200,4 +231,8 @@ log "Starting CDA at http://localhost:$PORT"
 log "Press Ctrl+C to stop"
 log ""
 
-docker compose up $BUILD_ARGS
+if [[ "$FORCE_BUILD" == true ]]; then
+    docker compose up --build
+else
+    docker compose up
+fi
