@@ -4,91 +4,56 @@ A proposal for using **YAML** as a human-friendly alternative to ODX for describ
 
 ## Why YAML Instead of ODX?
 
-| Aspect | ODX (ISO 22901) | Diagnostic YAML |
-|--------|-----------------|-----------------|
-| **Format** | XML-based, verbose | YAML/JSON, concise |
-| **Readability** | Complex, tool-dependent | Human-readable, git-friendly |
-| **Learning curve** | Steep, requires specialized tools | Minimal, standard text editors |
-| **Version control** | Difficult diffs | Clean, line-by-line diffs |
-| **Tooling** | Expensive commercial tools | Open-source, standard toolchains |
-| **Validation** | Custom parsers | JSON Schema (widely supported) |
-
-## Overview
-
-This repository provides:
-
-1. **JSON Schema** (`schema.json`) - Formal definition of the diagnostic YAML format
-2. **yaml-to-mdd** - Python tool to convert YAML to MDD (binary format for OpenSOVD CDA)
-3. **Run script** (`run-cda.sh`) - End-to-end script to start Classic Diagnostic Adapter with YAML config
-4. **Examples** - Sample YAML configurations for various use cases
-
-The schema describes diagnostic capabilities of an ECU and is designed to be:
-
-- **Strict by default**: most objects use `additionalProperties: false` to catch typos
-- **Minimal**: only core information is required; many sections are optional
-- **Standards-aligned**: models UDS services (ISO 14229), DoIP (ISO 13400), and CAN addressing (ISO 15765)
-- **Extensible**: OEM-specific data can live under `x-oem`
+| Aspect              | ODX (ISO 22901)                   | Diagnostic YAML                  |
+| ------------------- | --------------------------------- | -------------------------------- |
+| **Format**          | XML-based, verbose                | YAML/JSON, concise               |
+| **Readability**     | Complex, tool-dependent           | Human-readable, git-friendly     |
+| **Learning curve**  | Steep, requires specialized tools | Minimal, standard text editors   |
+| **Version control** | Difficult diffs                   | Clean, line-by-line diffs        |
+| **Tooling**         | Expensive commercial tools        | Open-source, standard toolchains |
+| **Validation**      | Custom parsers                    | JSON Schema (widely supported)   |
 
 ## Repository Structure
 
 ```
 diagnostic_yaml_proposal/
-├── schema.json           # JSON Schema (v1)
-├── SCHEMA.md             # Detailed schema documentation
-├── ODX_YAML_MAPPING.md   # Mapping between ODX and YAML concepts
-├── example-ecm.yml       # Example: Engine Control Module
-├── minimal-ecu.yml       # Example: Minimal valid configuration
-├── validate.py           # Schema validator script
-├── run-cda.sh            # Script to run OpenSOVD CDA with YAML
-├── yaml-to-mdd/          # YAML to MDD converter tool
-│   ├── pyproject.toml    # Python project configuration
-│   ├── src/              # Source code
-│   ├── tests/            # Test suite
-│   ├── examples/         # Additional examples
-│   └── doc/              # Documentation
-└── README.md             # This file
+├── yaml-schema/              # YAML schema definition
+│   ├── schema.json           # JSON Schema (v1)
+│   ├── SCHEMA.md             # Detailed documentation
+│   ├── example-ecm.yml       # Example configurations
+│   └── validate.py           # Validation script
+├── yaml-to-mdd/              # YAML to MDD converter
+│   ├── src/                  # Python source code
+│   ├── tests/                # Test suite
+│   └── pyproject.toml        # Project configuration
+├── docker-compose.yml        # Run OpenSOVD CDA
+├── run-cda.sh                # Convenience script
+└── README.md                 # This file
 ```
+
+## Components
+
+### 1. YAML Schema (`yaml-schema/`)
+
+JSON Schema defining the diagnostic YAML format. Standards-aligned with ISO 14229 (UDS), ISO 13400 (DoIP), and ISO 15765 (CAN).
+
+**[→ Schema Documentation](yaml-schema/README.md)**
+
+### 2. YAML to MDD Converter (`yaml-to-mdd/`)
+
+Python tool to convert Diagnostic YAML to MDD binary format used by OpenSOVD Classic Diagnostic Adapter.
+
+**[→ Converter Documentation](yaml-to-mdd/README.md)**
+
+### 3. Docker Setup
+
+Run OpenSOVD Classic Diagnostic Adapter with your YAML configuration.
+
+**[→ Docker Setup](#running-opensovd-cda)**
 
 ## Quick Start
 
-### 1. Validate your YAML
-
-```bash
-# Install dependencies
-pip install pyyaml jsonschema
-
-# Validate against schema
-python validate.py example-ecm.yml
-```
-
-### 2. Convert YAML to MDD
-
-```bash
-cd yaml-to-mdd
-
-# Install the converter
-pip install -e .
-
-# Or with Poetry
-poetry install
-
-# Convert YAML to MDD
-yaml-to-mdd convert ../example-ecm.yml -o output.mdd
-```
-
-### 3. Run OpenSOVD Classic Diagnostic Adapter
-
-```bash
-# Using the convenience script (from repo root)
-./run-cda.sh example-ecm.yml
-
-# Or manually with Docker
-docker run -p 8080:8080 \
-    -v $(pwd)/output.mdd:/data/ecu.mdd \
-    ghcr.io/eclipse-opensovd/classic-diagnostic-adapter:latest
-```
-
-## Example YAML
+### 1. Write Your Diagnostic YAML
 
 ```yaml
 schema: "opensovd.cda.diagdesc/v1"
@@ -98,28 +63,23 @@ meta:
   domain: "Production"
   created: "2026-01-26"
   revision: "1.0.0"
-  description: "Engine Control Module"
+  description: "My ECU"
 
 ecu:
-  id: "ECM_01"
-  name: "Engine Control Module"
+  id: "MY_ECU"
+  name: "My Electronic Control Unit"
   addressing:
     doip:
       ip: "192.168.0.50"
-      port: 13400
       logical_address: 0x0E00
       tester_address: 0x0E80
 
 sessions:
   default:
     id: 0x01
-  extended:
-    id: 0x03
 
 services:
   diagnosticSessionControl:
-    enabled: true
-  readDataByIdentifier:
     enabled: true
 
 access_patterns:
@@ -129,50 +89,66 @@ access_patterns:
     authentication: none
 ```
 
-See [example-ecm.yml](example-ecm.yml) for a complete example with DIDs, DTCs, routines, and security.
+### 2. Validate
 
-## Schema Documentation
-
-- [SCHEMA.md](SCHEMA.md) - Detailed schema reference
-- [ODX_YAML_MAPPING.md](ODX_YAML_MAPPING.md) - Mapping between ODX and YAML concepts
-
-### Schema Version
-
-Current version: `opensovd.cda.diagdesc/v1`
-
-Every document must include:
-
-```yaml
-schema: opensovd.cda.diagdesc/v1
+```bash
+cd yaml-schema
+pip install pyyaml jsonschema
+python validate.py your-ecu.yml
 ```
 
-## yaml-to-mdd Converter
-
-The `yaml-to-mdd` tool converts Diagnostic YAML to MDD binary format used by OpenSOVD Classic Diagnostic Adapter.
-
-### Installation
+### 3. Convert to MDD
 
 ```bash
 cd yaml-to-mdd
 pip install -e .
-# Or with Poetry
-poetry install
+yaml-to-mdd convert ../yaml-schema/your-ecu.yml -o output.mdd
 ```
 
-### Usage
+### 4. Run OpenSOVD CDA
 
 ```bash
-# Convert YAML to MDD
-yaml-to-mdd convert input.yaml -o output.mdd
-
-# Validate only (no output)
-yaml-to-mdd convert input.yaml --validate-only
-
-# Verbose output
-yaml-to-mdd convert input.yaml -o output.mdd -v
+# Build and run with docker-compose
+./run-cda.sh yaml-schema/example-ecm.yml
 ```
 
-For more details, see [yaml-to-mdd/README.md](yaml-to-mdd/README.md).
+## Running OpenSOVD CDA
+
+This repository includes a Docker setup to run [OpenSOVD Classic Diagnostic Adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter).
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.11+ (for yaml-to-mdd)
+
+### Using the Convenience Script
+
+```bash
+# Convert YAML and start CDA
+./run-cda.sh yaml-schema/example-ecm.yml
+
+# Only convert (no Docker)
+./run-cda.sh yaml-schema/example-ecm.yml --no-docker
+
+# Custom port
+./run-cda.sh yaml-schema/example-ecm.yml --port 9090
+```
+
+### Using Docker Compose Directly
+
+```bash
+# Build CDA image (first time only)
+docker compose build
+
+# Convert your YAML to MDD
+cd yaml-to-mdd && pip install -e . && cd ..
+yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/ecu.mdd
+
+# Start CDA
+docker compose up
+```
+
+CDA will be available at `http://localhost:8080`.
 
 ## Related Projects
 
