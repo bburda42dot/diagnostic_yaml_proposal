@@ -18,7 +18,7 @@ services:
     image: diagnostic-yaml/cda:local
     container_name: cda
     ports:
-      - "${CDA_PORT:-8080}:8080"
+      - "${CDA_PORT:-20002}:20002"
     volumes:
       - ./.output:/data:ro
     environment:
@@ -27,11 +27,11 @@ services:
       - "-d"
       - "/data"
       - "--listen-port"
-      - "8080"
+      - "20002"
       - "--listen-address"
       - "0.0.0.0"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:20002/health"]
       interval: 10s
       timeout: 5s
       retries: 3
