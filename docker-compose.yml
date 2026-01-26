@@ -18,22 +18,23 @@ services:
     image: diagnostic-yaml/cda:local
     container_name: cda
     ports:
-      - "${CDA_PORT:-20002}:20002"
+      - "${CDA_PORT:-20002}:${CDA_PORT:-20002}"
     volumes:
       - ./.output:/data:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info}
+      - CDA_PORT=${CDA_PORT:-20002}
     command:
       - "-d"
       - "/data"
       - "--listen-port"
-      - "20002"
+      - "${CDA_PORT:-20002}"
       - "--listen-address"
       - "0.0.0.0"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:20002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${CDA_PORT:-20002}/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
-    restart: unless-stopped
