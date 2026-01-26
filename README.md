@@ -119,7 +119,7 @@ This repository includes a Docker setup to run [OpenSOVD Classic Diagnostic Adap
 ### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.11+ (for yaml-to-mdd)
+- Python 3.11+ (for yaml-to-mdd / recommended to use with Poetry) 
 
 ### Using the Convenience Script
 
@@ -148,12 +148,12 @@ yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/ecu.mdd
 docker compose up
 ```
 
-CDA will be available at `http://localhost:8080`.
+CDA will be available at `http://localhost:20002`.
 
 ## Related Projects
 
 - [OpenSOVD Classic Diagnostic Adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) - SOVD gateway for classic UDS diagnostics
-- [odxtools](https://github.com/mercedes-benz/odxtools) - Python library for ODX files
+- [odx-converter](https://github.com/eclipse-opensovd/odx-converter) - ODX to MDD Converter
 
 ## Contributing
 
