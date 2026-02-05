@@ -2,12 +2,52 @@
 
 This module defines the intermediate representation for UDS diagnostic
 services. These models map closely to the FlatBuffers schema structure.
+
+Includes:
+- IRParamType: Parameter type enum matching FlatBuffers ParamSpecificData union.
+- IRParam: Parameter definition with explicit param_type.
+- IRRequest/IRResponse: Message containers.
+- IRDiagService: Complete UDS service definition.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+
+
+class IRParamType(Enum):
+    """Parameter types mapping 1:1 to FlatBuffers ParamSpecificData union.
+
+    Values match the FlatBuffers enum values for direct mapping:
+    - NONE = 0 (should never be used - indicates missing type)
+    - CODED_CONST = 1
+    - DYNAMIC = 2
+    - MATCHING_REQUEST_PARAM = 3
+    - NRC_CONST = 4
+    - PHYS_CONST = 5
+    - RESERVED = 6
+    - VALUE = 7
+    - TABLE_ENTRY = 8
+    - TABLE_KEY = 9
+    - TABLE_STRUCT = 10
+    - SYSTEM = 11
+    - LENGTH_KEY_REF = 12
+    """
+
+    NONE = 0  # Invalid/unset - for error detection
+    CODED_CONST = 1
+    DYNAMIC = 2
+    MATCHING_REQUEST_PARAM = 3
+    NRC_CONST = 4
+    PHYS_CONST = 5
+    RESERVED = 6
+    VALUE = 7
+    TABLE_ENTRY = 8
+    TABLE_KEY = 9
+    TABLE_STRUCT = 10
+    SYSTEM = 11
+    LENGTH_KEY_REF = 12
 
 
 class IRServiceType(Enum):
