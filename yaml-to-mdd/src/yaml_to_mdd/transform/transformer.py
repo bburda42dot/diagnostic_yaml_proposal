@@ -169,6 +169,8 @@ class YamlToIRTransformer:
 
             # Create DOP for DID data
             dop_name = self._get_or_create_dop_for_did(doc, db, did_def)
+            # Get the actual IRDOP object if it exists in the database
+            response_dop = db.dops.get(dop_name)
 
             # Determine readability/writability from explicit flags or access pattern string
             # Explicit readable/writable fields take precedence
@@ -194,7 +196,12 @@ class YamlToIRTransformer:
             # Generate read service
             if is_readable:
                 service = generate_read_did_service(
-                    did_id, did_def, dop_name, sessions, security
+                    did_id,
+                    did_def,
+                    dop_name,
+                    response_dop=response_dop,
+                    sessions=sessions,
+                    security=security,
                 )
                 db.add_service(service)
                 db.did_read_services[did_id] = service.short_name
@@ -211,7 +218,12 @@ class YamlToIRTransformer:
                             write_security = (*write_security, cond.security)
 
                 service = generate_write_did_service(
-                    did_id, did_def, dop_name, write_sessions, write_security
+                    did_id,
+                    did_def,
+                    dop_name,
+                    request_dop=response_dop,  # Same DOP for read/write
+                    sessions=write_sessions,
+                    security=write_security,
                 )
                 db.add_service(service)
                 db.did_write_services[did_id] = service.short_name
