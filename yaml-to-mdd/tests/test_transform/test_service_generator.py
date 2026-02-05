@@ -1,6 +1,6 @@
 """Tests for service generator."""
 
-from yaml_to_mdd.ir.services import IRServiceType
+from yaml_to_mdd.ir.services import IRParamType, IRServiceType
 from yaml_to_mdd.models.dids import DIDDefinition
 from yaml_to_mdd.models.routines import RoutineDefinition
 from yaml_to_mdd.models.types import BaseType, TypeDefinition
@@ -283,3 +283,182 @@ class TestGenerateRoutineServices:
         )
 
         assert services[0].required_security == ("level1", "level3")
+
+
+class TestParamTypeAssignment:
+    """Tests for correct param_type assignment in generated services."""
+
+    def test_read_did_request_param_types(self) -> None:
+        """Read DID request params: SID=CODED_CONST, DID=CODED_CONST."""
+        did_def = DIDDefinition(
+            name="Test",
+            type=TypeDefinition(base=BaseType.U16),
+            access="read",
+        )
+        service = generate_read_did_service(0xF190, did_def, "DOP_Test")
+
+        assert service.request is not None
+        params = service.request.params
+
+        # SID (byte 0) = CODED_CONST
+        sid_param = params[0]
+        assert sid_param.short_name == "SID_RQ"
+        assert sid_param.param_type == IRParamType.CODED_CONST
+        assert sid_param.coded_value == 0x22
+
+        # DID (bytes 1-2) = CODED_CONST
+        did_param = params[1]
+        assert did_param.short_name == "DID_RQ"
+        assert did_param.param_type == IRParamType.CODED_CONST
+        assert did_param.coded_value == 0xF190
+
+    def test_read_did_response_param_types(self) -> None:
+        """Read DID response: SID=CODED_CONST, DID=MATCHING_REQUEST, Data=VALUE."""
+        did_def = DIDDefinition(
+            name="Test",
+            type=TypeDefinition(base=BaseType.U16),
+            access="read",
+        )
+        service = generate_read_did_service(0xF190, did_def, "DOP_Test")
+
+        assert service.positive_response is not None
+        params = service.positive_response.params
+
+        # SID (byte 0) = CODED_CONST (0x62 = 0x22 + 0x40)
+        sid_param = params[0]
+        assert sid_param.short_name == "SID_PR"
+        assert sid_param.param_type == IRParamType.CODED_CONST
+        assert sid_param.coded_value == 0x62
+
+        # DID (bytes 1-2) = MATCHING_REQUEST_PARAM
+        did_param = params[1]
+        assert did_param.short_name == "DID_PR"
+        assert did_param.param_type == IRParamType.MATCHING_REQUEST_PARAM
+        assert did_param.matching_request_byte_pos == 1
+
+        # Data (byte 3+) = VALUE
+        data_param = params[2]
+        assert data_param.short_name == "Test"
+        assert data_param.param_type == IRParamType.VALUE
+
+    def test_write_did_request_param_types(self) -> None:
+        """Write DID request: SID=CODED_CONST, DID=CODED_CONST, Data=VALUE."""
+        did_def = DIDDefinition(
+            name="Config",
+            type=TypeDefinition(base=BaseType.U8),
+            access="write",
+        )
+        service = generate_write_did_service(0xF199, did_def, "DOP_Config")
+
+        assert service.request is not None
+        params = service.request.params
+
+        # SID = CODED_CONST
+        assert params[0].param_type == IRParamType.CODED_CONST
+        assert params[0].coded_value == 0x2E
+
+        # DID = CODED_CONST
+        assert params[1].param_type == IRParamType.CODED_CONST
+
+        # Data = VALUE
+        assert params[2].param_type == IRParamType.VALUE
+
+    def test_write_did_response_param_types(self) -> None:
+        """Write DID response: SID=CODED_CONST, DID=MATCHING_REQUEST."""
+        did_def = DIDDefinition(
+            name="Config",
+            type=TypeDefinition(base=BaseType.U8),
+            access="write",
+        )
+        service = generate_write_did_service(0xF199, did_def, "DOP_Config")
+
+        assert service.positive_response is not None
+        params = service.positive_response.params
+
+        # SID = CODED_CONST
+        assert params[0].param_type == IRParamType.CODED_CONST
+        assert params[0].coded_value == 0x6E
+
+        # DID = MATCHING_REQUEST_PARAM
+        assert params[1].param_type == IRParamType.MATCHING_REQUEST_PARAM
+
+    def test_routine_request_param_types(self) -> None:
+        """Routine request: SID=CODED_CONST, SF=CODED_CONST, RID=CODED_CONST."""
+        routine_def = RoutineDefinition(
+            name="SelfTest",
+            access="standard_read",
+            operations=["start"],
+        )
+        services = generate_routine_services(0xFF00, routine_def)
+        service = services[0]
+
+        params = service.request.params
+
+        # SID = CODED_CONST (0x31)
+        assert params[0].param_type == IRParamType.CODED_CONST
+        assert params[0].coded_value == 0x31
+
+        # SubFunction = CODED_CONST (0x01 for start)
+        assert params[1].param_type == IRParamType.CODED_CONST
+        assert params[1].coded_value == 0x01
+
+        # RID = CODED_CONST
+        assert params[2].param_type == IRParamType.CODED_CONST
+        assert params[2].coded_value == 0xFF00
+
+    def test_routine_response_param_types(self) -> None:
+        """Routine response: SID=CODED_CONST, SF/RID=MATCHING_REQUEST."""
+        routine_def = RoutineDefinition(
+            name="SelfTest",
+            access="standard_read",
+            operations=["start"],
+        )
+        services = generate_routine_services(0xFF00, routine_def)
+        service = services[0]
+
+        params = service.positive_response.params
+
+        # SID = CODED_CONST (0x71)
+        assert params[0].param_type == IRParamType.CODED_CONST
+        assert params[0].coded_value == 0x71
+
+        # SubFunction = MATCHING_REQUEST_PARAM
+        assert params[1].param_type == IRParamType.MATCHING_REQUEST_PARAM
+
+        # RID = MATCHING_REQUEST_PARAM
+        assert params[2].param_type == IRParamType.MATCHING_REQUEST_PARAM
+
+    def test_no_none_param_types_in_read_did(self) -> None:
+        """All params in generated services should have explicit type (not NONE)."""
+        did_def = DIDDefinition(
+            name="Test",
+            type=TypeDefinition(base=BaseType.U32),
+            access="read",
+        )
+        service = generate_read_did_service(0xF190, did_def, "DOP_Test")
+
+        all_params = list(service.request.params) + list(
+            service.positive_response.params
+        )
+        for param in all_params:
+            assert (
+                param.param_type != IRParamType.NONE
+            ), f"Param {param.short_name} has NONE type"
+
+    def test_no_none_param_types_in_routine(self) -> None:
+        """All routine params should have explicit type."""
+        routine_def = RoutineDefinition(
+            name="Test",
+            access="standard_read",
+            operations=["start", "stop", "result"],
+        )
+        services = generate_routine_services(0xFF00, routine_def)
+
+        for service in services:
+            all_params = list(service.request.params) + list(
+                service.positive_response.params
+            )
+            for param in all_params:
+                assert (
+                    param.param_type != IRParamType.NONE
+                ), f"Param {param.short_name} in {service.short_name} has NONE type"
