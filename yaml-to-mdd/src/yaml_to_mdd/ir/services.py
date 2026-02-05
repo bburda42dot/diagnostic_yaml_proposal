@@ -14,6 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from yaml_to_mdd.ir.types import IRDOP, IRDiagCodedType
 
 
 class IRParamType(Enum):
@@ -67,36 +71,61 @@ class IRServiceType(Enum):
 class IRParam:
     """A parameter in a request or response.
 
-    Maps to FlatBuffers Param table.
+    Maps to FlatBuffers Param table. Now with explicit param_type
+    for deterministic conversion to FlatBuffers.
 
     Attributes
     ----------
         short_name: Unique identifier for the parameter.
-        long_name: Human-readable description.
         byte_position: Position in the message (0-indexed).
         bit_position: For bit-level params, position within byte.
-        dop_ref: Reference to DOP for encoding/decoding.
-        semantic: Semantic type hint (SERVICE_ID, SUBFUNCTION, DATA).
-        coded_value: Fixed value for CodedConst params (e.g., DID, subfunction).
-        bit_length: Bit length for coded values (default 8 for 1-byte values).
+        semantic: Semantic type hint (SERVICE_ID, SUBFUNCTION, DATA, DID).
+
+        param_type: Explicit parameter type (maps to ParamSpecificData union).
+
+        # For CODED_CONST:
+        coded_value: Fixed value (e.g., service ID, DID value).
+        coded_diag_type: DiagCodedType for wire encoding.
+        bit_length: Bit length for coded values (default 8).
+
+        # For MATCHING_REQUEST_PARAM:
+        matching_request_byte_pos: Byte position in request to copy from.
+        matching_byte_length: Number of bytes to copy from request.
+
+        # For VALUE:
+        dop: Full DOP object for encoding/decoding.
+        physical_default_value: Default value for the parameter.
+
+        # Deprecated (use dop instead):
+        dop_ref: String reference to DOP (kept for backward compat).
+        long_name: Human-readable description.
 
     """
 
     short_name: str
-    long_name: str | None = None
-
     byte_position: int = 0
     bit_position: int | None = None
+    semantic: str | None = None
 
-    # Reference to DOP for encoding/decoding
-    dop_ref: str | None = None
+    # Explicit param type
+    param_type: IRParamType = IRParamType.VALUE
 
-    # Semantic type hints
-    semantic: str | None = None  # e.g., "SERVICE_ID", "SUBFUNCTION", "DATA"
-
-    # Coded value for CodedConst params (DID, subfunction, etc.)
+    # For CODED_CONST
     coded_value: int | None = None
-    bit_length: int = 8  # Default 8 bits (1 byte)
+    coded_diag_type: IRDiagCodedType | None = None
+    bit_length: int = 8
+
+    # For MATCHING_REQUEST_PARAM
+    matching_request_byte_pos: int | None = None
+    matching_byte_length: int | None = None
+
+    # For VALUE (full DOP object)
+    dop: IRDOP | None = None
+    physical_default_value: str | None = None
+
+    # Deprecated fields (kept for backward compatibility)
+    dop_ref: str | None = None
+    long_name: str | None = None
 
 
 @dataclass(frozen=True)

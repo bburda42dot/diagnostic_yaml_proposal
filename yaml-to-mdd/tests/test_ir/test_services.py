@@ -8,6 +8,12 @@ from yaml_to_mdd.ir.services import (
     IRResponse,
     IRServiceType,
 )
+from yaml_to_mdd.ir.types import (
+    IRDOP,
+    IRDataType,
+    IRDiagCodedType,
+    IRDiagCodedTypeName,
+)
 
 
 class TestIRParamType:
@@ -98,6 +104,71 @@ class TestIRParam:
             raise AssertionError("Expected FrozenInstanceError")
         except AttributeError:
             pass  # Expected
+
+
+class TestIRParamExtended:
+    """Tests for extended IRParam with param_type."""
+
+    def test_default_param_type_is_value(self) -> None:
+        """Default param_type should be VALUE."""
+        param = IRParam(short_name="test")
+        assert param.param_type == IRParamType.VALUE
+
+    def test_coded_const_param(self) -> None:
+        """Create a CODED_CONST param with all fields."""
+        diag_type = IRDiagCodedType(
+            type_name=IRDiagCodedTypeName.STANDARD_LENGTH_TYPE,
+            base_data_type=IRDataType.A_UINT_32,
+            bit_length=8,
+        )
+        param = IRParam(
+            short_name="SID_RQ",
+            byte_position=0,
+            semantic="SERVICE_ID",
+            param_type=IRParamType.CODED_CONST,
+            coded_value=0x22,
+            coded_diag_type=diag_type,
+            bit_length=8,
+        )
+        assert param.param_type == IRParamType.CODED_CONST
+        assert param.coded_value == 0x22
+        assert param.coded_diag_type is not None
+
+    def test_matching_request_param(self) -> None:
+        """Create a MATCHING_REQUEST_PARAM."""
+        param = IRParam(
+            short_name="DID_PR",
+            byte_position=1,
+            semantic="DID",
+            param_type=IRParamType.MATCHING_REQUEST_PARAM,
+            matching_request_byte_pos=1,
+            matching_byte_length=2,
+        )
+        assert param.param_type == IRParamType.MATCHING_REQUEST_PARAM
+        assert param.matching_request_byte_pos == 1
+        assert param.matching_byte_length == 2
+
+    def test_value_param_with_dop(self) -> None:
+        """Create a VALUE param with full DOP."""
+        dop = IRDOP(short_name="DOP_Identification")
+        param = IRParam(
+            short_name="Identification",
+            byte_position=3,
+            semantic="DATA",
+            param_type=IRParamType.VALUE,
+            dop=dop,
+        )
+        assert param.param_type == IRParamType.VALUE
+        assert param.dop is not None
+        assert param.dop.short_name == "DOP_Identification"
+
+    def test_backward_compat_dop_ref(self) -> None:
+        """dop_ref should still work for backward compatibility."""
+        param = IRParam(
+            short_name="test",
+            dop_ref="some_dop",
+        )
+        assert param.dop_ref == "some_dop"
 
 
 class TestIRRequest:
