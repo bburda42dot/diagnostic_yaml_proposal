@@ -1301,13 +1301,17 @@ class IRToFlatBuffersConverter:
         # Convert positive response(s)
         if ir_service.positive_response:
             service.posResponses = [
-                self._convert_response(ir_service.positive_response)
+                self._convert_response(
+                    ir_service.positive_response, ir_service.service_id
+                )
             ]
 
         # Convert negative response(s)
         if ir_service.negative_response:
             service.negResponses = [
-                self._convert_response(ir_service.negative_response)
+                self._convert_response(
+                    ir_service.negative_response, ir_service.service_id
+                )
             ]
 
         return service
@@ -1389,12 +1393,17 @@ class IRToFlatBuffersConverter:
 
         return request
 
-    def _convert_response(self, ir_response: IRResponse) -> ResponseT:
+    def _convert_response(
+        self, ir_response: IRResponse, service_id: int | None = None
+    ) -> ResponseT:
         """Convert IR Response to FlatBuffers Response.
 
         Args:
         ----
             ir_response: The IR response.
+            service_id: The UDS service ID for CodedConst generation. If provided,
+                        a ServiceID CodedConst with value (service_id + 0x40) will
+                        be created as the first parameter (positive response format).
 
         Returns:
         -------
@@ -1402,13 +1411,23 @@ class IRToFlatBuffersConverter:
 
         """
         response = ResponseT()
+        response.params = []
 
-        # Convert parameters
+        # Create ServiceID CodedConst if service_id provided (response SID = request SID + 0x40)
+        if service_id is not None:
+            sid_param = self._create_service_id_param(service_id + 0x40)
+            response.params.append(sid_param)
+
+        # Convert remaining parameters (skip any existing SERVICE_ID param)
         if ir_response.params:
-            response.params = []
             for ir_param in ir_response.params:
+                # Skip if already a ServiceID param (we created one above)
+                if ir_param.semantic == "SERVICE_ID" and service_id is not None:
+                    continue
                 param = self._convert_param(ir_param)
                 response.params.append(param)
+
+        return response
 
         return response
 

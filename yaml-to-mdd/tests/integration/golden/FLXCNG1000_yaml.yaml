@@ -295,7 +295,7 @@ services:
     enabled: true
 
   communicationControl:
-    enabled: false
+    enabled: true
 
   testerPresent:
     enabled: true
