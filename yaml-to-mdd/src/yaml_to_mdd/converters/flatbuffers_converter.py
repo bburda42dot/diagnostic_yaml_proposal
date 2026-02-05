@@ -76,6 +76,7 @@ from yaml_to_mdd.fbs_generated.dataformat.Value import ValueT
 from yaml_to_mdd.fbs_generated.dataformat.ValueEntry import ValueEntryT
 from yaml_to_mdd.fbs_generated.dataformat.Variant import VariantT
 from yaml_to_mdd.fbs_generated.dataformat.VariantPattern import VariantPatternT
+from yaml_to_mdd.fbs_generated.dataformat.MatchingRequestParam import MatchingRequestParamT
 from yaml_to_mdd.fbs_generated.dataformat.MatchingParameter import MatchingParameterT
 from yaml_to_mdd.fbs_generated.dataformat.ParentRef import ParentRefT
 from yaml_to_mdd.fbs_generated.dataformat.ParentRefType import ParentRefType
@@ -83,10 +84,11 @@ from yaml_to_mdd.fbs_generated.dataformat.ComplexValue import ComplexValueT
 from yaml_to_mdd.fbs_generated.dataformat.State import StateT
 from yaml_to_mdd.fbs_generated.dataformat.StateChart import StateChartT
 from yaml_to_mdd.fbs_generated.dataformat.StateTransition import StateTransitionT
+from yaml_to_mdd.ir.services import IRParamType
 
 if TYPE_CHECKING:
     from yaml_to_mdd.ir.database import IRDatabase, IRVariant
-    from yaml_to_mdd.ir.services import IRDiagService, IRParam, IRRequest, IRResponse
+    from yaml_to_mdd.ir.services import IRDiagService, IRParam, IRParamType, IRRequest, IRResponse
     from yaml_to_mdd.ir.types import IRDOP, IRCompuMethod, IRCompuScale, IRDiagCodedType
 
 # Mapping from YAML protocol_short_name to CDA protocol names
@@ -1434,6 +1436,8 @@ class IRToFlatBuffersConverter:
     def _convert_param(self, ir_param: IRParam) -> ParamT:
         """Convert IR Param to FlatBuffers Param.
 
+        Dispatches to the appropriate specific data type based on ir_param.param_type.
+
         Args:
         ----
             ir_param: The IR parameter.
@@ -1453,28 +1457,83 @@ class IRToFlatBuffersConverter:
         if ir_param.semantic:
             param.semantic = ir_param.semantic
 
-        # If coded_value is set, create CodedConst
-        if ir_param.coded_value is not None:
-            std_len = StandardLengthTypeT()
-            std_len.bitLength = ir_param.bit_length
-
-            diag_coded_type = DiagCodedTypeT()
-            diag_coded_type.baseDataType = DataType.A_UINT_32
-            diag_coded_type.specificDataType = SpecificDataType.StandardLengthType
-            diag_coded_type.specificData = std_len
-
-            coded_const = CodedConstT()
-            coded_const.codedValue = str(ir_param.coded_value)
-            coded_const.diagCodedType = diag_coded_type
-
+        # Dispatch based on param_type for explicit type handling
+        if ir_param.param_type == IRParamType.CODED_CONST:
             param.specificDataType = ParamSpecificData.CodedConst
-            param.specificData = coded_const
-        # Otherwise create Value as specific data with DOP reference
+            param.specificData = self._create_coded_const_data(ir_param)
+        elif ir_param.param_type == IRParamType.MATCHING_REQUEST_PARAM:
+            param.specificDataType = ParamSpecificData.MatchingRequestParam
+            param.specificData = self._create_matching_param_data(ir_param)
+        elif ir_param.param_type == IRParamType.VALUE:
+            if ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
+                value = ValueT()
+                value.dop = self._dop_cache[ir_param.dop_ref]
+                param.specificDataType = ParamSpecificData.Value
+                param.specificData = value
+        elif ir_param.param_type == IRParamType.NRC_CONST:
+            # NRC_CONST uses CodedConst with NRC semantics
+            param.specificDataType = ParamSpecificData.CodedConst
+            param.specificData = self._create_coded_const_data(ir_param)
+        elif ir_param.param_type == IRParamType.PHYS_CONST:
+            # PHYS_CONST - physical constant value
+            # Uses Value type with physical default
+            if ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
+                value = ValueT()
+                value.dop = self._dop_cache[ir_param.dop_ref]
+                param.specificDataType = ParamSpecificData.Value
+                param.specificData = value
+        # Fall back to heuristics for NONE or other types (backwards compatibility)
+        elif ir_param.coded_value is not None:
+            param.specificDataType = ParamSpecificData.CodedConst
+            param.specificData = self._create_coded_const_data(ir_param)
         elif ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
             value = ValueT()
-            # Embed the DOP directly
             value.dop = self._dop_cache[ir_param.dop_ref]
             param.specificDataType = ParamSpecificData.Value
             param.specificData = value
 
         return param
+
+    def _create_coded_const_data(self, ir_param: IRParam) -> CodedConstT:
+        """Create CodedConst specific data for a parameter.
+
+        Args:
+        ----
+            ir_param: The IR parameter with coded_value set.
+
+        Returns:
+        -------
+            FlatBuffers CodedConstT instance.
+
+        """
+        std_len = StandardLengthTypeT()
+        std_len.bitLength = ir_param.bit_length
+
+        diag_coded_type = DiagCodedTypeT()
+        diag_coded_type.baseDataType = DataType.A_UINT_32
+        diag_coded_type.specificDataType = SpecificDataType.StandardLengthType
+        diag_coded_type.specificData = std_len
+
+        coded_const = CodedConstT()
+        coded_const.codedValue = str(ir_param.coded_value) if ir_param.coded_value is not None else "0"
+        coded_const.diagCodedType = diag_coded_type
+
+        return coded_const
+
+    def _create_matching_param_data(self, ir_param: IRParam) -> MatchingRequestParamT:
+        """Create MatchingRequestParam specific data for a parameter.
+
+        Args:
+        ----
+            ir_param: The IR parameter with matching_request_byte_pos set.
+
+        Returns:
+        -------
+            FlatBuffers MatchingRequestParamT instance.
+
+        """
+        matching_param = MatchingRequestParamT()
+        matching_param.requestBytePos = ir_param.matching_request_byte_pos or 0
+        matching_param.byteLength = ir_param.matching_byte_length or ir_param.bit_length // 8
+
+        return matching_param
