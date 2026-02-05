@@ -724,6 +724,95 @@ class TestDeepMDDComparison:
         print(f"ODX compressed size:   {odx_structure.chunk_data_size}")
         print(f"YAML compressed size:  {yaml_structure.chunk_data_size}")
 
+    def test_object_count_parity(
+        self, flxc1000_odx_mdd: Path, flxc1000_yaml_mdd: Path
+    ) -> None:
+        """Verify object counts match between reference and generated MDD.
+
+        Object count parity ensures we generate the same number of FlatBuffers
+        objects as the reference implementation. This is critical for:
+        - Functional parity (same services, params, responses)
+        - Detecting missing or extra content
+        """
+        from yaml_to_mdd.fbs_generated.dataformat.EcuData import EcuData
+
+        def load_fbs(mdd_path: Path) -> bytes:
+            with open(mdd_path, "rb") as f:
+                data = f.read()
+            mdd = MDDFile()
+            mdd.ParseFromString(data[len(FILE_MAGIC) :])
+            for chunk in mdd.chunks:
+                if chunk.type == 0 or chunk.name == "diagnostic_description":
+                    compression = chunk.compression_algorithm
+                    if not compression or compression == "none":
+                        return chunk.data
+                    elif compression == "lzma":
+                        return lzma.decompress(chunk.data)
+                    elif compression == "gzip":
+                        return gzip.decompress(chunk.data)
+            return b""
+
+        def count_objects(ecu: Any) -> dict:
+            counts = {
+                "variants": ecu.VariantsLength(),
+                "services": 0,
+                "requests": 0,
+                "pos_responses": 0,
+                "neg_responses": 0,
+                "params": 0,
+            }
+            for i in range(ecu.VariantsLength()):
+                var = ecu.Variants(i)
+                if var and var.DiagLayer():
+                    dl = var.DiagLayer()
+                    counts["services"] += dl.DiagServicesLength()
+                    for j in range(dl.DiagServicesLength()):
+                        svc = dl.DiagServices(j)
+                        if svc:
+                            if svc.Request():
+                                counts["requests"] += 1
+                                counts["params"] += svc.Request().ParamsLength()
+                            counts["pos_responses"] += svc.PosResponsesLength()
+                            counts["neg_responses"] += svc.NegResponsesLength()
+                            for k in range(svc.PosResponsesLength()):
+                                if svc.PosResponses(k):
+                                    counts["params"] += svc.PosResponses(k).ParamsLength()
+                            for k in range(svc.NegResponsesLength()):
+                                if svc.NegResponses(k):
+                                    counts["params"] += svc.NegResponses(k).ParamsLength()
+            return counts
+
+        ref_fbs = load_fbs(flxc1000_odx_mdd)
+        gen_fbs = load_fbs(flxc1000_yaml_mdd)
+
+        ref_ecu = EcuData.GetRootAs(ref_fbs, 0)
+        gen_ecu = EcuData.GetRootAs(gen_fbs, 0)
+
+        ref_counts = count_objects(ref_ecu)
+        gen_counts = count_objects(gen_ecu)
+
+        print("\n=== OBJECT COUNT PARITY ===")
+        print(f"{'Object Type':<15} {'Reference':>10} {'Generated':>10} {'Match':>10}")
+        print("-" * 50)
+        all_match = True
+        for key in ref_counts:
+            match = ref_counts[key] == gen_counts[key]
+            all_match = all_match and match
+            status = "✓" if match else "✗"
+            print(f"{key:<15} {ref_counts[key]:>10} {gen_counts[key]:>10} {status:>10}")
+
+        ref_total = sum(ref_counts.values())
+        gen_total = sum(gen_counts.values())
+        print("-" * 50)
+        print(f"{'TOTAL':<15} {ref_total:>10} {gen_total:>10}")
+
+        # Assert parity for each object type
+        for key in ref_counts:
+            assert ref_counts[key] == gen_counts[key], (
+                f"Object count mismatch for {key}: "
+                f"reference={ref_counts[key]}, generated={gen_counts[key]}"
+            )
+
 
 class TestDetailedServiceComparison:
     """Detailed per-service comparison tests."""

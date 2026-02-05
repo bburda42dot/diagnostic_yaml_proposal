@@ -281,14 +281,18 @@ class CDAComplexValueT:
         entries_type_offset = builder.EndVector()
 
         # Step 3: Create entries vector (offsets to tables)
-        builder.StartVector(4, len(self._entries), 4)  # elemSize=4 (offset), alignment=4
+        builder.StartVector(
+            4, len(self._entries), 4
+        )  # elemSize=4 (offset), alignment=4
         for offset in reversed(entry_offsets):
             builder.PrependUOffsetTRelative(offset)
         entries_offset = builder.EndVector()
 
         # Step 4: Create ComplexValue table with both vectors
         builder.StartObject(2)  # 2 fields: entries_type, entries
-        builder.PrependUOffsetTRelativeSlot(0, entries_type_offset, 0)  # slot 0 = entries_type
+        builder.PrependUOffsetTRelativeSlot(
+            0, entries_type_offset, 0
+        )  # slot 0 = entries_type
         builder.PrependUOffsetTRelativeSlot(1, entries_offset, 0)  # slot 1 = entries
         return int(builder.EndObject())
 
@@ -499,7 +503,9 @@ class IRToFlatBuffersConverter:
         self._builder_size = builder_size
         self._dop_cache: dict[str, DOPT] = {}  # DOP name -> converted DOP
         self._protocol_cache: dict[str, ProtocolT] = {}  # Protocol name -> Protocol
-        self._all_services_cache: list[DiagServiceT] = []  # All services including variant-specific
+        self._all_services_cache: list[DiagServiceT] = (
+            []
+        )  # All services including variant-specific
 
     def convert(
         self,
@@ -590,7 +596,9 @@ class IRToFlatBuffersConverter:
         for cda_name, protocol in self._protocol_cache.items():
             # Create ComParamRefs for DoIP addressing parameters
             if "DoIP" in cda_name:
-                com_param_refs.extend(self._create_doip_com_param_refs(protocol, doip_addressing))
+                com_param_refs.extend(
+                    self._create_doip_com_param_refs(protocol, doip_addressing)
+                )
             else:
                 # For non-DoIP protocols, just add protocol reference
                 com_param_ref = ComParamRefT()
@@ -622,7 +630,9 @@ class IRToFlatBuffersConverter:
 
         return bytes(builder.Output())
 
-    def _create_variants(self, db: IRDatabase, base_diag_layer: DiagLayerT) -> list[VariantT]:
+    def _create_variants(
+        self, db: IRDatabase, base_diag_layer: DiagLayerT
+    ) -> list[VariantT]:
         """Create Variant tables from IR variants.
 
         Args:
@@ -667,7 +677,9 @@ class IRToFlatBuffersConverter:
                         svc_name = svc.diagComm.shortName if svc.diagComm else ""
                         if svc_name in ir_variant.service_refs:
                             variant_services.append(svc)
-                    variant_layer.diagServices = variant_services if variant_services else None
+                    variant_layer.diagServices = (
+                        variant_services if variant_services else None
+                    )
                 else:
                     # No variant-specific services - inherit all from parent
                     variant_layer.diagServices = None
@@ -727,7 +739,8 @@ class IRToFlatBuffersConverter:
                     (
                         v
                         for v in variants
-                        if v.diagLayer and v.diagLayer.shortName == ir_variant.parent_ref
+                        if v.diagLayer
+                        and v.diagLayer.shortName == ir_variant.parent_ref
                     ),
                     None,
                 )
@@ -1211,7 +1224,9 @@ class IRToFlatBuffersConverter:
 
         # Convert diagnostic coded type
         if ir_dop.diag_coded_type:
-            normal_dop.diagCodedType = self._convert_diag_coded_type(ir_dop.diag_coded_type)
+            normal_dop.diagCodedType = self._convert_diag_coded_type(
+                ir_dop.diag_coded_type
+            )
 
         # Convert computation method
         if ir_dop.compu_method:
@@ -1251,11 +1266,19 @@ class IRToFlatBuffersConverter:
             IRDiagCodedTypeName.LEADING_LENGTH_INFO_TYPE: (
                 DiagCodedTypeName.LEADING_LENGTH_INFO_TYPE
             ),
-            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (DiagCodedTypeName.MIN_MAX_LENGTH_TYPE),
-            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE),
-            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (DiagCodedTypeName.STANDARD_LENGTH_TYPE),
+            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (
+                DiagCodedTypeName.MIN_MAX_LENGTH_TYPE
+            ),
+            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (
+                DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE
+            ),
+            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (
+                DiagCodedTypeName.STANDARD_LENGTH_TYPE
+            ),
         }
-        dct.type = type_name_map.get(ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE)
+        dct.type = type_name_map.get(
+            ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE
+        )
 
         # Map base data type
         data_type_map = {
@@ -1268,7 +1291,9 @@ class IRToFlatBuffersConverter:
             IRDataType.A_BYTEFIELD: DataType.A_BYTEFIELD,
             IRDataType.A_FLOAT_64: DataType.A_FLOAT_64,
         }
-        dct.baseDataType = data_type_map.get(ir_dct.base_data_type, DataType.A_BYTEFIELD)
+        dct.baseDataType = data_type_map.get(
+            ir_dct.base_data_type, DataType.A_BYTEFIELD
+        )
 
         dct.isHighLowByteOrder = ir_dct.is_high_low_byte_order
 
@@ -1385,18 +1410,24 @@ class IRToFlatBuffersConverter:
 
         # Convert request (pass service_id for CodedConst generation)
         if ir_service.request:
-            service.request = self._convert_request(ir_service.request, ir_service.service_id)
+            service.request = self._convert_request(
+                ir_service.request, ir_service.service_id
+            )
 
         # Convert positive response(s)
         if ir_service.positive_response:
             service.posResponses = [
-                self._convert_response(ir_service.positive_response, ir_service.service_id)
+                self._convert_response(
+                    ir_service.positive_response, ir_service.service_id
+                )
             ]
 
         # Convert negative response(s)
         if ir_service.negative_response:
             service.negResponses = [
-                self._convert_response(ir_service.negative_response, ir_service.service_id)
+                self._convert_response(
+                    ir_service.negative_response, ir_service.service_id
+                )
             ]
 
         return service
@@ -1638,6 +1669,8 @@ class IRToFlatBuffersConverter:
         """
         matching_param = MatchingRequestParamT()
         matching_param.requestBytePos = ir_param.matching_request_byte_pos or 0
-        matching_param.byteLength = ir_param.matching_byte_length or ir_param.bit_length // 8
+        matching_param.byteLength = (
+            ir_param.matching_byte_length or ir_param.bit_length // 8
+        )
 
         return matching_param
