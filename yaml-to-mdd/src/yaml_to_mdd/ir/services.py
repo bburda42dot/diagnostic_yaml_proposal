@@ -37,6 +37,8 @@ class IRParam:
         bit_position: For bit-level params, position within byte.
         dop_ref: Reference to DOP for encoding/decoding.
         semantic: Semantic type hint (SERVICE_ID, SUBFUNCTION, DATA).
+        coded_value: Fixed value for CodedConst params (e.g., DID, subfunction).
+        bit_length: Bit length for coded values (default 8 for 1-byte values).
 
     """
 
@@ -51,6 +53,10 @@ class IRParam:
 
     # Semantic type hints
     semantic: str | None = None  # e.g., "SERVICE_ID", "SUBFUNCTION", "DATA"
+
+    # Coded value for CodedConst params (DID, subfunction, etc.)
+    coded_value: int | None = None
+    bit_length: int = 8  # Default 8 bits (1 byte)
 
 
 @dataclass(frozen=True)
@@ -146,6 +152,9 @@ class IRDiagService:
     # Audience (optional)
     audience_enabled: tuple[str, ...] | None = None
     audience_disabled: tuple[str, ...] | None = None
+
+    # Variant ownership - if set, service belongs only to this variant (not base)
+    variant_ref: str | None = None
 
     def __hash__(self) -> int:
         """Hash by service identification for use in sets/dicts."""

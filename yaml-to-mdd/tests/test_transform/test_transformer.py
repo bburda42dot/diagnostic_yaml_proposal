@@ -26,7 +26,9 @@ class TestYamlToIRTransformerBasics:
         assert isinstance(result, IRDatabase)
         assert result.ecu_name == "ECM_V1"
 
-    def test_transform_creates_standard_dops(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_creates_standard_dops(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should create standard DOPs for minimal document."""
         doc = DiagnosticDescription.model_validate(valid_base_data)
         transformer = YamlToIRTransformer()
@@ -108,7 +110,9 @@ class TestYamlToIRTransformerTypes:
         assert dop.compu_method is not None
         assert dop.compu_method.category == IRCompuCategory.TEXT_TABLE
 
-    def test_transform_preserves_multiple_types(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_preserves_multiple_types(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should preserve all types in conversion."""
         data = {
             **valid_base_data,
@@ -148,7 +152,7 @@ class TestYamlToIRTransformerDIDs:
 
         result = transformer.transform(doc)
 
-        service = result.get_service("Read_VIN")
+        service = result.get_service("VIN_Read")
         assert service is not None
         assert service.service_id == 0x22
 
@@ -169,11 +173,13 @@ class TestYamlToIRTransformerDIDs:
 
         result = transformer.transform(doc)
 
-        service = result.get_service("Write_Config")
+        service = result.get_service("Config_Write")
         assert service is not None
         assert service.service_id == 0x2E
 
-    def test_transform_with_readwrite_did(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_readwrite_did(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should generate both services for read-write DID."""
         data = {
             **valid_base_data,
@@ -190,13 +196,15 @@ class TestYamlToIRTransformerDIDs:
 
         result = transformer.transform(doc)
 
-        read_service = result.get_service("Read_Setting")
-        write_service = result.get_service("Write_Setting")
+        read_service = result.get_service("Setting_Read")
+        write_service = result.get_service("Setting_Write")
 
         assert read_service is not None
         assert write_service is not None
 
-    def test_transform_did_uses_type_reference(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_did_uses_type_reference(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should use type reference when DID references defined type."""
         data = {
             **valid_base_data,
@@ -219,13 +227,15 @@ class TestYamlToIRTransformerDIDs:
         # Type should exist
         assert result.get_dop("vin_type") is not None
         # Service should be generated
-        assert result.get_service("Read_VIN") is not None
+        assert result.get_service("VIN_Read") is not None
 
 
 class TestYamlToIRTransformerRoutines:
     """Tests for routine processing."""
 
-    def test_transform_with_start_routine(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_start_routine(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should generate start service for routine."""
         data = {
             **valid_base_data,
@@ -247,7 +257,9 @@ class TestYamlToIRTransformerRoutines:
         assert service.service_id == 0x31
         assert service.subfunction == 0x01
 
-    def test_transform_with_all_operations(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_all_operations(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should generate all services for full routine."""
         data = {
             **valid_base_data,
@@ -320,9 +332,9 @@ class TestYamlToIRTransformerComplex:
         assert result.get_dop("status_enum") is not None
 
         # Check DID services
-        assert result.get_service("Read_Temperature") is not None
-        assert result.get_service("Read_Status") is not None
-        assert result.get_service("Write_Status") is not None
+        assert result.get_service("Temperature_Read") is not None
+        assert result.get_service("Status_Read") is not None
+        assert result.get_service("Status_Write") is not None
 
         # Check routine services
         assert result.get_service("Start_Calibration") is not None
@@ -368,7 +380,9 @@ class TestYamlToIRTransformerComplex:
         assert result.sessions["programming"] == 2
         assert result.sessions["extended"] == 3
 
-    def test_transform_with_security(self, valid_base_data_with_security: dict[str, Any]) -> None:
+    def test_transform_with_security(
+        self, valid_base_data_with_security: dict[str, Any]
+    ) -> None:
         """Should capture security level mappings."""
         doc = DiagnosticDescription.model_validate(valid_base_data_with_security)
         transformer = YamlToIRTransformer()
@@ -392,7 +406,9 @@ class TestYamlToIRTransformerMemory:
         assert result.memory_regions == []
         assert result.data_blocks == []
 
-    def test_transform_with_memory_region(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_memory_region(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should convert memory regions to IR."""
         data = {
             **valid_base_data,
@@ -479,7 +495,9 @@ class TestYamlToIRTransformerMemory:
         assert region.address_bytes == 2
         assert region.length_bytes == 3
 
-    def test_transform_with_memory_region_sessions(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_memory_region_sessions(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should convert session list to tuple."""
         data = {
             **valid_base_data,
@@ -556,7 +574,9 @@ class TestYamlToIRTransformerMemory:
         assert block.block_type == "download"
         assert block.data_format == 0x10  # compressed
 
-    def test_transform_with_data_block_all_formats(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_data_block_all_formats(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should convert all data format types correctly."""
         data = {
             **valid_base_data,
@@ -600,7 +620,9 @@ class TestYamlToIRTransformerMemory:
         assert formats["compressed_block"] == 0x10
         assert formats["enc_comp_block"] == 0x11
 
-    def test_transform_with_full_memory_config(self, valid_base_data: dict[str, Any]) -> None:
+    def test_transform_with_full_memory_config(
+        self, valid_base_data: dict[str, Any]
+    ) -> None:
         """Should convert complete memory configuration."""
         data = {
             **valid_base_data,

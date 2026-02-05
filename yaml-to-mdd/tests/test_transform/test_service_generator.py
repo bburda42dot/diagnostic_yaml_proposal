@@ -28,7 +28,7 @@ class TestGenerateReadDidService:
             dop_name="DOP_VIN",
         )
 
-        assert service.short_name == "Read_VIN"
+        assert service.short_name == "VIN_Read"
         assert service.service_id == 0x22
         assert service.service_type == IRServiceType.POS_RESPONSE
 
@@ -43,7 +43,7 @@ class TestGenerateReadDidService:
         service = generate_read_did_service(0x1234, did_def, "DOP_Test")
 
         assert service.request is not None
-        assert service.request.short_name == "Read_TestDID_Request"
+        assert service.request.short_name == "RQ_TestDID_Read"
         assert len(service.request.params) == 2
         # Check constant prefix: 22 12 34
         assert service.request.constant_prefix == bytes([0x22, 0x12, 0x34])
@@ -115,7 +115,7 @@ class TestGenerateWriteDidService:
             dop_name="DOP_Config",
         )
 
-        assert service.short_name == "Write_Config"
+        assert service.short_name == "Config_Write"
         assert service.service_id == 0x2E
         assert service.service_type == IRServiceType.POS_RESPONSE
 
@@ -214,7 +214,9 @@ class TestGenerateRoutineServices:
         # Request prefix: 31 01 12 34
         assert service.request.constant_prefix == bytes([0x31, 0x01, 0x12, 0x34])
         # Response prefix: 71 01 12 34
-        assert service.positive_response.constant_prefix == bytes([0x71, 0x01, 0x12, 0x34])
+        assert service.positive_response.constant_prefix == bytes(
+            [0x71, 0x01, 0x12, 0x34]
+        )
 
     def test_stop_routine_service(self) -> None:
         """Should generate correct stop routine service."""
@@ -229,7 +231,9 @@ class TestGenerateRoutineServices:
 
         assert service.subfunction == 0x02
         assert service.request.constant_prefix == bytes([0x31, 0x02, 0x12, 0x34])
-        assert service.positive_response.constant_prefix == bytes([0x71, 0x02, 0x12, 0x34])
+        assert service.positive_response.constant_prefix == bytes(
+            [0x71, 0x02, 0x12, 0x34]
+        )
 
     def test_result_routine_service(self) -> None:
         """Should generate correct result routine service."""
@@ -244,7 +248,9 @@ class TestGenerateRoutineServices:
 
         assert service.subfunction == 0x03
         assert service.request.constant_prefix == bytes([0x31, 0x03, 0x12, 0x34])
-        assert service.positive_response.constant_prefix == bytes([0x71, 0x03, 0x12, 0x34])
+        assert service.positive_response.constant_prefix == bytes(
+            [0x71, 0x03, 0x12, 0x34]
+        )
 
     def test_routine_with_sessions(self) -> None:
         """Should include session requirements."""

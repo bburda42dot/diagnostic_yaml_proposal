@@ -69,7 +69,6 @@ dmypy.json
 poetry.lock
 
 # Generated files
-*.mdd
 src/yaml_to_mdd/fbs_generated/
 src/yaml_to_mdd/proto_generated/
 *.fbs.original

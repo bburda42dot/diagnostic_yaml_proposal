@@ -7,9 +7,11 @@ from yaml_to_mdd.ir.database import (
     IRDatabase,
     IRDataBlock,
     IRExtendedDataRecord,
+    IRMatchingParameter,
     IRMemoryRegion,
     IRSnapshotDataItem,
     IRSnapshotRecord,
+    IRVariant,
 )
 from yaml_to_mdd.ir.types import (
     IRDOP,
@@ -27,8 +29,14 @@ from yaml_to_mdd.models.memory import AddressFormat, DataBlock, MemoryRegion
 from yaml_to_mdd.models.root import DiagnosticDescription
 from yaml_to_mdd.models.types import TypeDefinition
 from yaml_to_mdd.transform.service_generator import (
+    generate_authentication_services,
+    generate_communication_control_services,
+    generate_ecu_reset_services,
     generate_read_did_service,
     generate_routine_services,
+    generate_security_access_services,
+    generate_session_control_services,
+    generate_transfer_data_services,
     generate_write_did_service,
 )
 from yaml_to_mdd.transform.type_converter import type_definition_to_dop
@@ -49,6 +57,9 @@ class YamlToIRTransformer:
     def __init__(self) -> None:
         """Initialize the transformer."""
         self._type_cache: dict[str, IRDOP] = {}
+        # Track services that belong to specific variants (not base)
+        # Maps variant pattern (e.g., "Boot") to list of service short_names
+        self._variant_specific_services: dict[str, list[str]] = {}
 
     def transform(self, doc: DiagnosticDescription) -> IRDatabase:
         """Transform a DiagnosticDescription to IRDatabase.
@@ -92,11 +103,22 @@ class YamlToIRTransformer:
         # Process Routines -> Services
         self._process_routines(doc, db)
 
+        # Process UDS session/security/reset services
+        self._process_session_services(doc, db)
+        self._process_security_services(doc, db)
+        self._process_ecu_reset_services(doc, db)
+        self._process_authentication_services(doc, db)
+        self._process_communication_control_services(doc, db)
+        self._process_transfer_data_services(doc, db)
+
         # Process Memory configuration
         self._process_memory(doc, db)
 
         # Process DTCs
         self._process_dtcs(doc, db)
+
+        # Process Variants
+        self._process_variants(doc, db)
 
         return db
 
@@ -149,26 +171,31 @@ class YamlToIRTransformer:
             dop_name = self._get_or_create_dop_for_did(doc, db, did_def)
 
             # Determine readability/writability from explicit flags or access pattern string
-            # If readable/writable fields are set, use them; otherwise infer from access string
+            # Explicit readable/writable fields take precedence
             is_readable = did_def.readable if did_def.readable is not None else True
             is_writable = did_def.writable if did_def.writable is not None else False
 
-            # Legacy: if access is a string like "read", "write", "read_write", parse it
-            if did_def.access:
+            # Legacy: if access is exactly "read", "write", or "read_write" (not a pattern ref)
+            # Only apply this logic if readable/writable are not explicitly set
+            if did_def.access and did_def.readable is None and did_def.writable is None:
                 access_lower = did_def.access.lower()
-                if "read" in access_lower and "write" in access_lower:
-                    is_readable = True
-                    is_writable = True
-                elif "write" in access_lower:
-                    is_readable = False
-                    is_writable = True
-                elif "read" in access_lower:
-                    is_readable = True
-                    is_writable = False
+                # Only parse legacy values, not access pattern references
+                if access_lower in ("read", "write", "read_write", "readwrite"):
+                    if access_lower in ("read_write", "readwrite"):
+                        is_readable = True
+                        is_writable = True
+                    elif access_lower == "write":
+                        is_readable = False
+                        is_writable = True
+                    elif access_lower == "read":
+                        is_readable = True
+                        is_writable = False
 
             # Generate read service
             if is_readable:
-                service = generate_read_did_service(did_id, did_def, dop_name, sessions, security)
+                service = generate_read_did_service(
+                    did_id, did_def, dop_name, sessions, security
+                )
                 db.add_service(service)
                 db.did_read_services[did_id] = service.short_name
 
@@ -199,12 +226,231 @@ class YamlToIRTransformer:
             sessions, security = self._resolve_access(doc, routine_def.access)
 
             # Generate services for each supported operation
-            services = generate_routine_services(routine_id, routine_def, sessions, security)
+            services = generate_routine_services(
+                routine_id, routine_def, sessions, security
+            )
 
             db.routine_services[routine_id] = []
             for service in services:
                 db.add_service(service)
                 db.routine_services[routine_id].append(service.short_name)
+
+    def _process_session_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate DiagnosticSessionControl (0x10) services.
+
+        Service naming follows ODX convention: {Session}_Start
+        e.g., Default_Start, Programming_Start, Extended_Start
+        """
+        if not doc.sessions:
+            return
+
+        # Check if session control is enabled in services config
+        if doc.services and doc.services.diagnosticSessionControl:
+            if not doc.services.diagnosticSessionControl.enabled:
+                return
+
+        # Build session dict: {name -> subfunction}
+        # Use alias if available, otherwise capitalize the key name
+        sessions_dict: dict[str, int] = {}
+        for name, session in doc.sessions.items():
+            # Use alias for display name, default to capitalized key
+            display_name = session.alias if session.alias else name.capitalize()
+            sessions_dict[display_name] = session.id
+
+        services = generate_session_control_services(sessions_dict)
+        for service in services:
+            db.add_service(service)
+
+    def _process_security_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate SecurityAccess (0x27) services.
+
+        Service naming follows ODX convention:
+        - RequestSeed_Level_{level}
+        - SendKey_Level_{level}
+
+        Note: SecurityAccess services are typically only available in
+        bootloader variants, so they are marked for Boot variant assignment.
+        """
+        if not doc.security:
+            return
+
+        # Check if security access is enabled in services config
+        if doc.services and doc.services.securityAccess:
+            if not doc.services.securityAccess.enabled:
+                return
+
+        # Extract security levels
+        levels = [sec.level for sec in doc.security.values()]
+
+        if levels:
+            # Generate security services marked as belonging to Boot variant
+            # ODX convention: SecurityAccess only in Boot_Variant, not in base
+            services = generate_security_access_services(levels, variant_ref="Boot")
+            # Track these services as belonging to Boot variant (ODX convention)
+            boot_services: list[str] = []
+            for service in services:
+                db.add_service(service)
+                boot_services.append(service.short_name)
+            # Mark for Boot variant - will be assigned in _process_variants
+            self._variant_specific_services["Boot"] = boot_services
+
+    def _process_ecu_reset_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate ECUReset (0x11) services.
+
+        Service naming follows ODX convention: HardReset, SoftReset, etc.
+        """
+        # Check if ecuReset is configured in services
+        if not doc.services or not doc.services.ecuReset:
+            # Default: generate standard reset services
+            services = generate_ecu_reset_services()
+            for service in services:
+                db.add_service(service)
+            return
+
+        ecu_reset_cfg = doc.services.ecuReset
+        if not ecu_reset_cfg.enabled:
+            return
+
+        subfunctions = ecu_reset_cfg.subfunctions
+        if subfunctions:
+            # Map subfunction names to ODX-style names
+            name_mapping = {
+                "hardReset": "HardReset",
+                "softReset": "SoftReset",
+                "keyOffOnReset": "KeyOffOnReset",
+                "rapidPowerShutDown": "RapidPowerShutDown",
+                "enableRapidPowerShutDown": "EnableRapidPowerShutDown",
+                "disableRapidPowerShutDown": "DisableRapidPowerShutDown",
+            }
+            reset_types = {}
+            for name, sf in subfunctions.items():
+                odx_name = name_mapping.get(name, name.title().replace("_", ""))
+                reset_types[odx_name] = sf
+
+            services = generate_ecu_reset_services(reset_types)
+            for service in services:
+                db.add_service(service)
+            return
+
+        # Default reset services if no subfunctions defined
+        services = generate_ecu_reset_services()
+        for service in services:
+            db.add_service(service)
+
+    def _process_authentication_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate Authentication (0x29) services.
+
+        Service naming follows ODX convention: Authentication_{Name}
+        """
+        if not doc.services or not doc.services.authentication:
+            return
+
+        auth_cfg = doc.services.authentication
+        if not auth_cfg.enabled:
+            return
+
+        subfunctions = None
+        if auth_cfg.subfunctions:
+            if isinstance(auth_cfg.subfunctions, dict):
+                # Convert to ODX-style names
+                subfunctions = {}
+                for name, sf in auth_cfg.subfunctions.items():
+                    # Title-case the name
+                    odx_name = name.title().replace("_", "")
+                    subfunctions[odx_name] = sf
+            else:
+                # List of subfunctions - use default naming
+                subfunctions = {
+                    "Deauthenticate": (
+                        auth_cfg.subfunctions[0]
+                        if len(auth_cfg.subfunctions) > 0
+                        else 0x00
+                    ),
+                }
+
+        services = generate_authentication_services(subfunctions)
+        for service in services:
+            db.add_service(service)
+
+    def _process_communication_control_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate CommunicationControl (0x28) services.
+
+        Service naming follows ODX convention: {Name}_Control
+        """
+        if not doc.services or not doc.services.communicationControl:
+            return
+
+        comm_cfg = doc.services.communicationControl
+        if not comm_cfg.enabled:
+            return
+
+        control_types = None
+        if comm_cfg.subfunctions:
+            if isinstance(comm_cfg.subfunctions, dict):
+                control_types = {}
+                for name, ct in comm_cfg.subfunctions.items():
+                    control_types[name] = ct
+
+        services = generate_communication_control_services(control_types)
+        for service in services:
+            db.add_service(service)
+
+    def _process_transfer_data_services(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Generate Transfer Data services (0x34, 0x36, 0x37).
+
+        Generates RequestDownload, TransferData, and TransferExit.
+        """
+        # Check if any transfer services are enabled
+        if not doc.services:
+            return
+
+        has_download = (
+            doc.services.requestDownload and doc.services.requestDownload.enabled
+        )
+        has_transfer = doc.services.transferData and doc.services.transferData.enabled
+        has_exit = (
+            doc.services.requestTransferExit
+            and doc.services.requestTransferExit.enabled
+        )
+
+        # Only generate if at least one is enabled
+        if not (has_download or has_transfer or has_exit):
+            return
+
+        services = generate_transfer_data_services()
+
+        # Filter to only enabled services
+        for service in services:
+            if service.short_name == "RequestDownload" and has_download:
+                db.add_service(service)
+            elif service.short_name == "TransferData" and has_transfer:
+                db.add_service(service)
+            elif service.short_name == "TransferExit" and has_exit:
+                db.add_service(service)
 
     def _resolve_access(
         self,
@@ -379,7 +625,9 @@ class YamlToIRTransformer:
 
         # Process each DTC
         for dtc_code, dtc_def in doc.dtcs.items():
-            ir_dtc = self._transform_dtc(dtc_code, dtc_def, default_snapshots, default_extended)
+            ir_dtc = self._transform_dtc(
+                dtc_code, dtc_def, default_snapshots, default_extended
+            )
             db.dtcs.append(ir_dtc)
 
     def _transform_dtc(
@@ -639,3 +887,83 @@ class YamlToIRTransformer:
             "f64": 8,
         }
         return type_sizes.get(type_name, 2)
+
+    def _process_variants(
+        self,
+        doc: DiagnosticDescription,
+        db: IRDatabase,
+    ) -> None:
+        """Process variant definitions.
+
+        Generates IR variants from YAML variant definitions.
+        Always creates a base variant with the ECU name.
+
+        Args:
+        ----
+            doc: The diagnostic description document.
+            db: The IR database to populate.
+
+        """
+        # Always create the base variant
+        base_variant = IRVariant(
+            short_name=doc.ecu.id,
+            is_base_variant=True,
+        )
+        db.add_variant(base_variant)
+
+        # Process additional variants if defined
+        if not doc.variants:
+            return
+
+        # Get variant definitions
+        definitions = doc.variants.get("definitions", {})
+        if not definitions:
+            return
+
+        for variant_name, variant_def in definitions.items():
+            # Build full variant name: {ECU_ID}_{variant_name}
+            full_name = f"{doc.ecu.id}_{variant_name}"
+
+            # Extract matching parameters from detection config
+            matching_params: list[IRMatchingParameter] = []
+
+            if isinstance(variant_def, dict):
+                detect = variant_def.get("detect", {})
+                if detect:
+                    # Handle response_param_match detection
+                    if "response_param_match" in detect:
+                        match = detect["response_param_match"]
+                        service_ref = match.get("service", "")
+                        expected = match.get("expected_value", 0)
+
+                        # Convert expected value to string
+                        if isinstance(expected, int):
+                            expected_str = str(expected)
+                        else:
+                            expected_str = str(expected)
+
+                        matching_params.append(
+                            IRMatchingParameter(
+                                expected_value=expected_str,
+                                diag_service_ref=service_ref,
+                                out_param_ref=match.get("param_path"),
+                                use_physical_addressing=True,
+                            )
+                        )
+
+            # Check if this variant has specific services assigned
+            service_refs: tuple[str, ...] = ()
+            for pattern, services in self._variant_specific_services.items():
+                if pattern.lower() in variant_name.lower():
+                    service_refs = tuple(services)
+                    break
+
+            # Create variant
+            variant = IRVariant(
+                short_name=full_name,
+                is_base_variant=False,
+                matching_parameters=tuple(matching_params),
+                service_refs=service_refs,
+                parent_ref=doc.ecu.id,  # Inherit from base variant
+            )
+            db.add_variant(variant)

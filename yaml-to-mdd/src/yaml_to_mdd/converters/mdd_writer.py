@@ -244,11 +244,35 @@ def convert_yaml_to_mdd(
     doip_addressing: DoIPAddressingConfig | None = None
     if doc.ecu.addressing and doc.ecu.addressing.doip:
         doip = doc.ecu.addressing.doip
+        timing = doc.ecu.addressing.timing
         doip_addressing = DoIPAddressingConfig(
             logical_gateway_address=doip.logical_address,
             logical_ecu_address=doip.logical_address,  # Same as gateway for most ECUs
             logical_functional_address=doip.functional_address or 0xE400,
             logical_tester_address=doip.tester_address,
+            # UDS timing parameters
+            p2_max_ms=timing.p2_ms if timing else None,
+            p2_star_ms=timing.p2_star_ms if timing else None,
+            p6_max_ms=getattr(timing, "p6_ms", None) if timing else None,
+            p6_star_ms=getattr(timing, "p6_star_ms", None) if timing else None,
+            s3_ms=timing.s3_ms if timing else None,
+            # NRC completion timeouts
+            rc78_completion_timeout_ms=(
+                getattr(timing, "rc78_completion_timeout_ms", None) if timing else None
+            ),
+            rc21_completion_timeout_ms=(
+                getattr(timing, "rc21_completion_timeout_ms", None) if timing else None
+            ),
+            # DoIP-specific timeouts
+            doip_diagnostic_ack_timeout_ms=getattr(
+                doip, "diagnostic_ack_timeout_ms", None
+            ),
+            doip_routing_activation_timeout_ms=getattr(
+                doip, "routing_activation_timeout_ms", None
+            ),
+            # Retry configuration
+            doip_number_of_retries=getattr(doip, "number_of_retries", None),
+            doip_retry_period_ms=getattr(doip, "retry_period_ms", None),
         )
 
     # Write MDD

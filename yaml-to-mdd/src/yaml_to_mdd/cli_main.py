@@ -124,7 +124,9 @@ def validate(
     errors = validate_diagnostic_description(input_file)
 
     if errors:
-        error_console.print(f"\n[bold red]✗ Validation failed for {input_file.name}[/bold red]\n")
+        error_console.print(
+            f"\n[bold red]✗ Validation failed for {input_file.name}[/bold red]\n"
+        )
 
         # Create error table
         table = Table(title="Validation Errors", show_header=True)
@@ -147,7 +149,9 @@ def validate(
     try:
         doc = load_diagnostic_description(input_file)
     except LoaderError as e:
-        error_console.print(f"\n[bold red]✗ Failed to load {input_file.name}[/bold red]")
+        error_console.print(
+            f"\n[bold red]✗ Failed to load {input_file.name}[/bold red]"
+        )
         error_console.print(str(e))
         raise typer.Exit(code=1) from None
 
@@ -164,9 +168,9 @@ def validate(
         elif output_format == "tree":
             ErrorTree(error_console).print_result(result)
         else:
-            ErrorFormatter(error_console, show_context=verbose).format_validation_result(
-                result, input_file, source_content
-            )
+            ErrorFormatter(
+                error_console, show_context=verbose
+            ).format_validation_result(result, input_file, source_content)
 
         if not result.is_valid:
             raise typer.Exit(code=1)
@@ -387,6 +391,21 @@ def convert(
                 console.print(f"  [dim]DOPs: {len(ir_db.dops)}[/dim]")
                 console.print(f"  [dim]Services: {len(ir_db.services)}[/dim]")
 
+            # Step 3.5: Extract DoIP addressing from document
+            from yaml_to_mdd.converters.flatbuffers_converter import (
+                DoIPAddressingConfig,
+            )
+
+            doip_addressing = None
+            if doc.ecu.addressing and doc.ecu.addressing.doip:
+                doip = doc.ecu.addressing.doip
+                doip_addressing = DoIPAddressingConfig(
+                    logical_gateway_address=doip.logical_address,
+                    logical_ecu_address=doip.logical_address,
+                    logical_functional_address=doip.functional_address or 0xE400,
+                    logical_tester_address=doip.tester_address,
+                )
+
             # Step 4: Write MDD
             if validate_only:
                 task = progress.add_task("Serializing (dry run)...", total=None)
@@ -394,7 +413,7 @@ def convert(
                     writer = MDDWriter(compression=effective_compression)
                 else:
                     writer = MDDWriter()  # Use default compression (lzma)
-                mdd_bytes = writer.write_bytes(ir_db)
+                mdd_bytes = writer.write_bytes(ir_db, doip_addressing=doip_addressing)
                 progress.update(task, description="[green]✓ Serialized[/green]")
                 size = len(mdd_bytes)
                 console.print(
@@ -406,7 +425,7 @@ def convert(
                     writer = MDDWriter(compression=effective_compression)
                 else:
                     writer = MDDWriter()  # Use default compression (lzma)
-                writer.write(ir_db, output)
+                writer.write(ir_db, output, doip_addressing=doip_addressing)
                 progress.update(task, description="[green]✓ Written[/green]")
 
                 file_size = output.stat().st_size
