@@ -116,9 +116,9 @@ yaml-to-mdd --version
 
 ### Current (MVP)
 
-- [x] Basic ECU definition (single ECU, no variants)
+- [x] Basic ECU definition
 - [x] Sessions and timing parameters
-- [x] Security levels (0x27)
+- [x] Security levels (0x27 SecurityAccess)
 - [x] DIDs (ReadDataByIdentifier 0x22, WriteDataByIdentifier 0x2E)
 - [x] Basic type system (atomic types, enums, linear conversion)
 - [x] DTCs with snapshots and extended data
@@ -126,12 +126,28 @@ yaml-to-mdd --version
 - [x] Memory regions and data blocks
 - [x] Audience filtering
 - [x] Compression (gzip, zstd)
+- [x] Variants (base + named variants with detection patterns)
+- [x] Variant detection (response_param_match for ECU variant identification)
+- [x] Routines (RoutineControl 0x31 - start, stop, results)
+- [x] Authentication (0x29)
+- [x] CommunicationControl (0x28)
+- [x] TransferData services (0x34, 0x35, 0x36, 0x37)
+- [x] ResetECU (0x11)
+- [x] TesterPresent (0x3E)
+- [x] ClearDTC (0x14)
+- [x] ReadDTCInformation (0x19)
+
+### MDD Comparison Status
+
+The converter produces MDD files that match reference ODX-derived MDDs:
+
+| ECU        | Services | Variants | Status |
+| ---------- | -------- | -------- | ------ |
+| FLXC1000   | 28/28    | 3/3      | ✓      |
+| FLXCNG1000 | 22/22    | 2/2      | ✓      |
 
 ### Planned
 
-- [ ] Routines (RoutineControl 0x31) - partial support
-- [ ] Variant support and detection
-- [ ] Authentication (0x29)
 - [ ] Complex types (structs, arrays)
 - [ ] ComParams
 - [ ] SDGs (Special Data Groups)

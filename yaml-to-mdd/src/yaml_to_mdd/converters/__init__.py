@@ -40,10 +40,18 @@ Compression Options:
 """
 
 from yaml_to_mdd.converters.flatbuffers_converter import IRToFlatBuffersConverter
+from yaml_to_mdd.converters.mdd_reader import (
+    MDDReader,
+    MDDStructure,
+    read_mdd_structure,
+)
 from yaml_to_mdd.converters.mdd_writer import MDDWriter, convert_yaml_to_mdd
 
 __all__ = [
     "IRToFlatBuffersConverter",
+    "MDDReader",
+    "MDDStructure",
     "MDDWriter",
     "convert_yaml_to_mdd",
+    "read_mdd_structure",
 ]

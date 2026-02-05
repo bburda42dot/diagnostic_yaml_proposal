@@ -1,6 +1,6 @@
 """Tests for IR database model."""
 
-from yaml_to_mdd.ir.database import IRDatabase
+from yaml_to_mdd.ir.database import IRDatabase, IRMatchingParameter, IRVariant
 from yaml_to_mdd.ir.services import IRDiagService, IRServiceType
 from yaml_to_mdd.ir.types import IRDOP
 
@@ -247,3 +247,166 @@ class TestIRDatabaseIntegration:
 
         assert db.ecu_name == "ModifiedECU"
         assert db.author == "New Author"
+
+
+class TestIRMatchingParameter:
+    """Tests for IRMatchingParameter dataclass."""
+
+    def test_create_matching_parameter(self) -> None:
+        """Should create matching parameter with required fields."""
+        param = IRMatchingParameter(
+            expected_value="0xFF0000",
+            diag_service_ref="Identification_Read",
+            out_param_ref="Identification",
+        )
+        assert param.expected_value == "0xFF0000"
+        assert param.diag_service_ref == "Identification_Read"
+        assert param.out_param_ref == "Identification"
+        assert param.use_physical_addressing is True  # default
+
+    def test_matching_parameter_with_physical_addressing(self) -> None:
+        """Should create matching parameter with physical addressing disabled."""
+        param = IRMatchingParameter(
+            expected_value="0x01",
+            diag_service_ref="ReadDID_F1A0",
+            out_param_ref="HardwareVersion",
+            use_physical_addressing=False,
+        )
+        assert param.use_physical_addressing is False
+
+    def test_matching_parameter_is_immutable(self) -> None:
+        """Should be immutable (frozen dataclass)."""
+        param = IRMatchingParameter(
+            expected_value="0xFF",
+            diag_service_ref="Service1",
+            out_param_ref="Param1",
+        )
+        # frozen dataclass should raise FrozenInstanceError
+        import pytest
+
+        with pytest.raises(AttributeError):
+            param.expected_value = "0x00"  # type: ignore
+
+
+class TestIRVariant:
+    """Tests for IRVariant dataclass."""
+
+    def test_create_variant(self) -> None:
+        """Should create variant with name."""
+        variant = IRVariant(short_name="Boot_Variant")
+        assert variant.short_name == "Boot_Variant"
+        assert variant.is_base_variant is False  # default
+        assert variant.matching_parameters == ()  # default
+
+    def test_create_base_variant(self) -> None:
+        """Should create base variant."""
+        variant = IRVariant(
+            short_name="FLXC1000",
+            is_base_variant=True,
+        )
+        assert variant.is_base_variant is True
+
+    def test_variant_with_matching_parameters(self) -> None:
+        """Should create variant with matching parameters."""
+        params = (
+            IRMatchingParameter(
+                expected_value="0xFF0000",
+                diag_service_ref="Identification_Read",
+                out_param_ref="Identification",
+            ),
+        )
+        variant = IRVariant(
+            short_name="Boot_Variant",
+            matching_parameters=params,
+        )
+        assert len(variant.matching_parameters) == 1
+        assert variant.matching_parameters[0].expected_value == "0xFF0000"
+
+    def test_variant_with_multiple_matching_parameters(self) -> None:
+        """Should support multiple matching parameters."""
+        params = (
+            IRMatchingParameter("0xFF0000", "Service1", "Param1"),
+            IRMatchingParameter(
+                "0x01", "Service2", "Param2", use_physical_addressing=False
+            ),
+        )
+        variant = IRVariant(
+            short_name="Complex_Variant",
+            matching_parameters=params,
+        )
+        assert len(variant.matching_parameters) == 2
+
+    def test_variant_is_immutable(self) -> None:
+        """Should be immutable (frozen dataclass)."""
+        variant = IRVariant(short_name="Test")
+        import pytest
+
+        with pytest.raises(AttributeError):
+            variant.short_name = "Modified"  # type: ignore
+
+
+class TestIRDatabaseVariants:
+    """Tests for IRDatabase variant management."""
+
+    def test_add_variant(self) -> None:
+        """Should add variant to database."""
+        db = IRDatabase(ecu_name="TestECU", revision="1.0.0")
+        variant = IRVariant(short_name="Boot_Variant")
+
+        db.add_variant(variant)
+
+        assert len(db.variants) == 1
+        assert db.variants[0].short_name == "Boot_Variant"
+
+    def test_add_multiple_variants(self) -> None:
+        """Should add multiple variants."""
+        db = IRDatabase(ecu_name="TestECU", revision="1.0.0")
+
+        db.add_variant(IRVariant(short_name="Base", is_base_variant=True))
+        db.add_variant(IRVariant(short_name="Boot_Variant"))
+        db.add_variant(IRVariant(short_name="App_Variant"))
+
+        assert len(db.variants) == 3
+
+    def test_variants_preserved_order(self) -> None:
+        """Should preserve insertion order of variants."""
+        db = IRDatabase(ecu_name="TestECU", revision="1.0.0")
+
+        db.add_variant(IRVariant(short_name="First"))
+        db.add_variant(IRVariant(short_name="Second"))
+        db.add_variant(IRVariant(short_name="Third"))
+
+        assert db.variants[0].short_name == "First"
+        assert db.variants[1].short_name == "Second"
+        assert db.variants[2].short_name == "Third"
+
+    def test_variant_with_detection_pattern(self) -> None:
+        """Should add variant with full detection pattern."""
+        db = IRDatabase(ecu_name="FLXC1000", revision="1.0.0")
+
+        # Add service that variant detection references
+        db.add_service(
+            IRDiagService(
+                short_name="Identification_Read",
+                service_id=0x22,
+            )
+        )
+
+        # Add variant with detection pattern
+        variant = IRVariant(
+            short_name="FLXC1000_Boot_Variant",
+            matching_parameters=(
+                IRMatchingParameter(
+                    expected_value="0xFF0000",
+                    diag_service_ref="Identification_Read",
+                    out_param_ref="Identification",
+                ),
+            ),
+        )
+        db.add_variant(variant)
+
+        assert len(db.variants) == 1
+        assert (
+            db.variants[0].matching_parameters[0].diag_service_ref
+            == "Identification_Read"
+        )

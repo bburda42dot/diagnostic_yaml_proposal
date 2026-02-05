@@ -12,12 +12,12 @@ def fixtures_dir() -> Path:
 
 
 @pytest.fixture
-def minimal_ecu_yaml(fixtures_dir: Path) -> Path:
+def minimal_ecu_yaml() -> Path:
     """Return path to minimal-ecu.yml test file."""
-    return fixtures_dir.parent.parent.parent / "diagnostic_yaml" / "minimal-ecu.yml"
+    return Path(__file__).parent.parent.parent / "yaml-schema" / "minimal-ecu.yml"
 
 
 @pytest.fixture
-def example_ecm_yaml(fixtures_dir: Path) -> Path:
+def example_ecm_yaml() -> Path:
     """Return path to example-ecm.yml test file."""
-    return fixtures_dir.parent.parent.parent / "diagnostic_yaml" / "example-ecm.yml"
+    return Path(__file__).parent.parent.parent / "yaml-schema" / "example-ecm.yml"

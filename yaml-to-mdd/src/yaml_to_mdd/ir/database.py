@@ -15,6 +15,35 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class IRMatchingParameter:
+    """IR representation of a variant matching parameter.
+
+    Used to identify which variant is running based on a diagnostic response.
+    """
+
+    expected_value: str  # Value to match (as string for consistency with FlatBuffers)
+    diag_service_ref: str  # Reference to the diagnostic service to call
+    out_param_ref: str | None = None  # Reference to the output parameter to match
+    use_physical_addressing: bool = True
+
+
+@dataclass(frozen=True)
+class IRVariant:
+    """IR representation of an ECU variant.
+
+    Variants allow different configurations of an ECU (e.g., bootloader vs app).
+    """
+
+    short_name: str
+    is_base_variant: bool = False
+    matching_parameters: tuple[IRMatchingParameter, ...] = ()
+    # Variant-specific service overrides (services only in this variant)
+    service_refs: tuple[str, ...] = ()
+    # Parent variant reference (for inheritance)
+    parent_ref: str | None = None
+
+
+@dataclass(frozen=True)
 class IRMemoryRegion:
     """IR representation of a memory region."""
 
@@ -135,8 +164,12 @@ class IRDatabase:
     security_levels: dict[str, int] = field(default_factory=dict)  # name -> level
 
     # DID to service mapping (for ReadDataByIdentifier)
-    did_read_services: dict[int, str] = field(default_factory=dict)  # DID -> service_name
-    did_write_services: dict[int, str] = field(default_factory=dict)  # DID -> service_name
+    did_read_services: dict[int, str] = field(
+        default_factory=dict
+    )  # DID -> service_name
+    did_write_services: dict[int, str] = field(
+        default_factory=dict
+    )  # DID -> service_name
 
     # Routine to service mapping
     routine_services: dict[int, list[str]] = field(
@@ -149,6 +182,9 @@ class IRDatabase:
 
     # DTC definitions
     dtcs: list[IRDTC] = field(default_factory=list)
+
+    # Variant definitions
+    variants: list[IRVariant] = field(default_factory=list)
 
     def add_dop(self, dop: IRDOP) -> None:
         """Add a DOP to the database.
@@ -169,6 +205,16 @@ class IRDatabase:
 
         """
         self.services[service.short_name] = service
+
+    def add_variant(self, variant: IRVariant) -> None:
+        """Add a variant to the database.
+
+        Args:
+        ----
+            variant: The variant to add.
+
+        """
+        self.variants.append(variant)
 
     def get_dop(self, name: str) -> IRDOP | None:
         """Get a DOP by name.

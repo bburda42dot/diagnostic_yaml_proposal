@@ -172,7 +172,9 @@ class ResponseOutput(BaseModel):
     ]
     children: Annotated[
         list[ResponseOutput] | None,
-        Field(default=None, description="Nested parameters (for struct-like responses)"),
+        Field(
+            default=None, description="Nested parameters (for struct-like responses)"
+        ),
     ]
 
 
@@ -309,10 +311,18 @@ class AuthenticationConfig(BaseServiceConfig):
     ]
 
 
-class TesterPresentConfig(BaseServiceConfig):
-    """Configuration for TesterPresent (0x3E) service."""
+class _TesterPresentConfig(BaseServiceConfig):
+    """Configuration for TesterPresent (0x3E) service.
+
+    Note: Named with underscore prefix to avoid pytest collection warning
+    (pytest tries to collect classes starting with 'Test').
+    """
 
     pass  # Only needs enabled and addressing_mode from base
+
+
+# Alias for backwards compatibility and cleaner API
+TesterPresentConfig = _TesterPresentConfig
 
 
 class ControlDTCSettingConfig(BaseServiceConfig):

@@ -65,3 +65,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --cov=yaml_to_mdd --cov-report=term-missing --cov-config=.coveragerc"
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]

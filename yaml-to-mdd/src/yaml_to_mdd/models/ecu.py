@@ -113,8 +113,11 @@ class DoIPAddressing(BaseModel):
         Field(description="ECU logical address for DoIP routing"),
     ]
     tester_address: Annotated[
-        HexInt16,
-        Field(description="Tester/client logical address"),
+        HexInt16 | None,
+        Field(
+            default=None,
+            description="Tester/client logical address (optional, used for CP_DoIPLogicalTesterAddress)",
+        ),
     ]
     functional_address: Annotated[
         HexInt16 | None,
@@ -128,6 +131,41 @@ class DoIPAddressing(BaseModel):
         Field(
             default=None,
             description="Routing activation type",
+        ),
+    ]
+    # DoIP-specific timeouts
+    diagnostic_ack_timeout_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="DoIP diagnostic message acknowledgement timeout (ms)",
+        ),
+    ]
+    routing_activation_timeout_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="DoIP routing activation timeout (ms)",
+        ),
+    ]
+    # Retry configuration
+    number_of_retries: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=255,
+            description="Number of retries for DoIP communication",
+        ),
+    ]
+    retry_period_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="Period between retries (ms)",
         ),
     ]
 
@@ -177,7 +215,9 @@ class Timing(BaseModel):
     """UDS timing parameters.
 
     P2 and P2* are server response timing parameters.
+    P6 and P6* are extended timing for upload/download.
     S3 is the session timeout (TesterPresent keepalive).
+    RC timeouts control NRC completion handling.
 
     Example:
     -------
@@ -185,7 +225,10 @@ class Timing(BaseModel):
         timing:
           p2_ms: 50
           p2_star_ms: 5000
+          p6_ms: 1000
+          p6_star_ms: 10000
           s3_ms: 5000
+          rc78_completion_timeout_ms: 30000
         ```
 
     """
@@ -210,6 +253,24 @@ class Timing(BaseModel):
             description="P2* timeout: max time after NRC 0x78 response pending (ms)",
         ),
     ]
+    p6_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=65535,
+            description="P6 timeout: extended timing for data transfer (ms)",
+        ),
+    ]
+    p6_star_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=65535,
+            description="P6* timeout: extended timing after NRC 0x78 for data transfer (ms)",
+        ),
+    ]
     s3_ms: Annotated[
         int | None,
         Field(
@@ -217,6 +278,23 @@ class Timing(BaseModel):
             ge=0,
             le=65535,
             description="S3 timeout: session keepalive interval (ms)",
+        ),
+    ]
+    # NRC completion timeouts
+    rc78_completion_timeout_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="NRC 0x78 (ResponsePending) completion timeout (ms)",
+        ),
+    ]
+    rc21_completion_timeout_ms: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            description="NRC 0x21 (BusyRepeatRequest) completion timeout (ms)",
         ),
     ]
 
