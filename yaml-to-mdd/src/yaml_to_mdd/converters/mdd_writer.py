@@ -208,7 +208,7 @@ class MDDWriter:
 def convert_yaml_to_mdd(
     yaml_path: Path,
     output_path: Path,
-    compression: str | None = None,
+    compression: str | None = "lzma",
 ) -> None:
     """High-level function to convert YAML to MDD.
 
@@ -222,7 +222,8 @@ def convert_yaml_to_mdd(
     ----
         yaml_path: Input YAML file path.
         output_path: Output MDD file path.
-        compression: Optional compression algorithm ("zstd" or "gzip").
+        compression: Compression algorithm ("lzma", "zstd", "gzip", or None).
+            Defaults to "lzma" for compatibility with classic-diagnostic-adapter.
 
     Raises:
     ------
