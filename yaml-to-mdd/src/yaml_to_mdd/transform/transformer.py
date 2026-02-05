@@ -158,6 +158,81 @@ class YamlToIRTransformer:
         )
         db.add_dop(dop_rid)
 
+        # DOP for end-of-PDU byte array (security seeds/keys)
+        dop_end_of_pdu = IRDOP(
+            short_name="DOP_EndOfPDU_ByteArray",
+            long_name="End of PDU Byte Array",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE,
+                base_data_type=IRDataType.A_BYTEFIELD,
+                min_length=1,
+                max_length=255,
+                termination="END_OF_PDU",
+            ),
+        )
+        db.add_dop(dop_end_of_pdu)
+
+        # DOPs for fixed-size integers
+        dop_uint8 = IRDOP(
+            short_name="DOP_UINT8",
+            long_name="8-bit Unsigned Integer",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.STANDARD_LENGTH_TYPE,
+                base_data_type=IRDataType.A_UINT_32,
+                bit_length=8,
+            ),
+        )
+        db.add_dop(dop_uint8)
+
+        dop_uint32 = IRDOP(
+            short_name="DOP_UINT32",
+            long_name="32-bit Unsigned Integer",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.STANDARD_LENGTH_TYPE,
+                base_data_type=IRDataType.A_UINT_32,
+                bit_length=32,
+            ),
+        )
+        db.add_dop(dop_uint32)
+
+        dop_int32 = IRDOP(
+            short_name="DOP_INT32",
+            long_name="32-bit Signed Integer",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.STANDARD_LENGTH_TYPE,
+                base_data_type=IRDataType.A_INT_32,
+                bit_length=32,
+            ),
+        )
+        db.add_dop(dop_int32)
+
+        # DOP for memory address/size byte arrays
+        dop_byte_array = IRDOP(
+            short_name="DOP_ByteArray",
+            long_name="Byte Array",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE,
+                base_data_type=IRDataType.A_BYTEFIELD,
+                min_length=1,
+                max_length=255,
+            ),
+        )
+        db.add_dop(dop_byte_array)
+
+        # DOP for authentication return parameter
+        dop_auth_return = IRDOP(
+            short_name="DOP_AuthReturnParam",
+            long_name="Authentication Return Parameter",
+            diag_coded_type=IRDiagCodedType(
+                type_name=IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE,
+                base_data_type=IRDataType.A_BYTEFIELD,
+                min_length=1,
+                max_length=255,
+                termination="END_OF_PDU",
+            ),
+        )
+        db.add_dop(dop_auth_return)
+
     def _process_dids(self, doc: DiagnosticDescription, db: IRDatabase) -> None:
         """Process DIDs into services."""
         if not doc.dids:
@@ -238,9 +313,7 @@ class YamlToIRTransformer:
             sessions, security = self._resolve_access(doc, routine_def.access)
 
             # Generate services for each supported operation
-            services = generate_routine_services(
-                routine_id, routine_def, sessions, security
-            )
+            services = generate_routine_services(routine_id, routine_def, sessions, security)
 
             db.routine_services[routine_id] = []
             for service in services:
@@ -261,9 +334,12 @@ class YamlToIRTransformer:
             return
 
         # Check if session control is enabled in services config
-        if doc.services and doc.services.diagnosticSessionControl:
-            if not doc.services.diagnosticSessionControl.enabled:
-                return
+        if (
+            doc.services
+            and doc.services.diagnosticSessionControl
+            and not doc.services.diagnosticSessionControl.enabled
+        ):
+            return
 
         # Build session dict: {name -> subfunction}
         # Use alias if available, otherwise capitalize the key name
@@ -295,9 +371,8 @@ class YamlToIRTransformer:
             return
 
         # Check if security access is enabled in services config
-        if doc.services and doc.services.securityAccess:
-            if not doc.services.securityAccess.enabled:
-                return
+        if doc.services and doc.services.securityAccess and not doc.services.securityAccess.enabled:
+            return
 
         # Extract security levels
         levels = [sec.level for sec in doc.security.values()]
@@ -390,9 +465,7 @@ class YamlToIRTransformer:
                 # List of subfunctions - use default naming
                 subfunctions = {
                     "Deauthenticate": (
-                        auth_cfg.subfunctions[0]
-                        if len(auth_cfg.subfunctions) > 0
-                        else 0x00
+                        auth_cfg.subfunctions[0] if len(auth_cfg.subfunctions) > 0 else 0x00
                     ),
                 }
 
@@ -417,11 +490,10 @@ class YamlToIRTransformer:
             return
 
         control_types = None
-        if comm_cfg.subfunctions:
-            if isinstance(comm_cfg.subfunctions, dict):
-                control_types = {}
-                for name, ct in comm_cfg.subfunctions.items():
-                    control_types[name] = ct
+        if comm_cfg.subfunctions and isinstance(comm_cfg.subfunctions, dict):
+            control_types = {}
+            for name, ct in comm_cfg.subfunctions.items():
+                control_types[name] = ct
 
         services = generate_communication_control_services(control_types)
         for service in services:
@@ -440,14 +512,9 @@ class YamlToIRTransformer:
         if not doc.services:
             return
 
-        has_download = (
-            doc.services.requestDownload and doc.services.requestDownload.enabled
-        )
+        has_download = doc.services.requestDownload and doc.services.requestDownload.enabled
         has_transfer = doc.services.transferData and doc.services.transferData.enabled
-        has_exit = (
-            doc.services.requestTransferExit
-            and doc.services.requestTransferExit.enabled
-        )
+        has_exit = doc.services.requestTransferExit and doc.services.requestTransferExit.enabled
 
         # Only generate if at least one is enabled
         if not (has_download or has_transfer or has_exit):
@@ -457,11 +524,14 @@ class YamlToIRTransformer:
 
         # Filter to only enabled services
         for service in services:
-            if service.short_name == "RequestDownload" and has_download:
-                db.add_service(service)
-            elif service.short_name == "TransferData" and has_transfer:
-                db.add_service(service)
-            elif service.short_name == "TransferExit" and has_exit:
+            if (
+                service.short_name == "RequestDownload"
+                and has_download
+                or service.short_name == "TransferData"
+                and has_transfer
+                or service.short_name == "TransferExit"
+                and has_exit
+            ):
                 db.add_service(service)
 
     def _resolve_access(
@@ -637,9 +707,7 @@ class YamlToIRTransformer:
 
         # Process each DTC
         for dtc_code, dtc_def in doc.dtcs.items():
-            ir_dtc = self._transform_dtc(
-                dtc_code, dtc_def, default_snapshots, default_extended
-            )
+            ir_dtc = self._transform_dtc(dtc_code, dtc_def, default_snapshots, default_extended)
             db.dtcs.append(ir_dtc)
 
     def _transform_dtc(
@@ -941,27 +1009,22 @@ class YamlToIRTransformer:
 
             if isinstance(variant_def, dict):
                 detect = variant_def.get("detect", {})
-                if detect:
-                    # Handle response_param_match detection
-                    if "response_param_match" in detect:
-                        match = detect["response_param_match"]
-                        service_ref = match.get("service", "")
-                        expected = match.get("expected_value", 0)
+                if detect and "response_param_match" in detect:
+                    match = detect["response_param_match"]
+                    service_ref = match.get("service", "")
+                    expected = match.get("expected_value", 0)
 
-                        # Convert expected value to string
-                        if isinstance(expected, int):
-                            expected_str = str(expected)
-                        else:
-                            expected_str = str(expected)
+                    # Convert expected value to string
+                    expected_str = str(expected)
 
-                        matching_params.append(
-                            IRMatchingParameter(
-                                expected_value=expected_str,
-                                diag_service_ref=service_ref,
-                                out_param_ref=match.get("param_path"),
-                                use_physical_addressing=True,
-                            )
+                    matching_params.append(
+                        IRMatchingParameter(
+                            expected_value=expected_str,
+                            diag_service_ref=service_ref,
+                            out_param_ref=match.get("param_path"),
+                            use_physical_addressing=True,
                         )
+                    )
 
             # Check if this variant has specific services assigned
             service_refs: tuple[str, ...] = ()

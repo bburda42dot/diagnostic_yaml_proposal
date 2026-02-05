@@ -47,6 +47,7 @@ from yaml_to_mdd.fbs_generated.dataformat.ComParamSpecificData import (
 )
 from yaml_to_mdd.fbs_generated.dataformat.ComParamType import ComParamType
 from yaml_to_mdd.fbs_generated.dataformat.ComplexComParam import ComplexComParamT
+from yaml_to_mdd.fbs_generated.dataformat.ComplexValue import ComplexValueT
 from yaml_to_mdd.fbs_generated.dataformat.CompuInternalToPhys import (
     CompuInternalToPhysT,
 )
@@ -61,9 +62,15 @@ from yaml_to_mdd.fbs_generated.dataformat.DiagService import DiagServiceT
 from yaml_to_mdd.fbs_generated.dataformat.DOP import DOPT
 from yaml_to_mdd.fbs_generated.dataformat.DOPType import DOPType
 from yaml_to_mdd.fbs_generated.dataformat.EcuData import EcuDataT
+from yaml_to_mdd.fbs_generated.dataformat.MatchingParameter import MatchingParameterT
+from yaml_to_mdd.fbs_generated.dataformat.MatchingRequestParam import (
+    MatchingRequestParamT,
+)
 from yaml_to_mdd.fbs_generated.dataformat.NormalDOP import NormalDOPT
 from yaml_to_mdd.fbs_generated.dataformat.Param import ParamT
 from yaml_to_mdd.fbs_generated.dataformat.ParamSpecificData import ParamSpecificData
+from yaml_to_mdd.fbs_generated.dataformat.ParentRef import ParentRefT
+from yaml_to_mdd.fbs_generated.dataformat.ParentRefType import ParentRefType
 from yaml_to_mdd.fbs_generated.dataformat.Protocol import ProtocolT
 from yaml_to_mdd.fbs_generated.dataformat.RegularComParam import RegularComParamT
 from yaml_to_mdd.fbs_generated.dataformat.Request import RequestT
@@ -72,23 +79,24 @@ from yaml_to_mdd.fbs_generated.dataformat.SimpleValue import SimpleValueT
 from yaml_to_mdd.fbs_generated.dataformat.SpecificDataType import SpecificDataType
 from yaml_to_mdd.fbs_generated.dataformat.SpecificDOPData import SpecificDOPData
 from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import StandardLengthTypeT
+from yaml_to_mdd.fbs_generated.dataformat.State import StateT
+from yaml_to_mdd.fbs_generated.dataformat.StateChart import StateChartT
+from yaml_to_mdd.fbs_generated.dataformat.StateTransition import StateTransitionT
 from yaml_to_mdd.fbs_generated.dataformat.Value import ValueT
 from yaml_to_mdd.fbs_generated.dataformat.ValueEntry import ValueEntryT
 from yaml_to_mdd.fbs_generated.dataformat.Variant import VariantT
 from yaml_to_mdd.fbs_generated.dataformat.VariantPattern import VariantPatternT
-from yaml_to_mdd.fbs_generated.dataformat.MatchingRequestParam import MatchingRequestParamT
-from yaml_to_mdd.fbs_generated.dataformat.MatchingParameter import MatchingParameterT
-from yaml_to_mdd.fbs_generated.dataformat.ParentRef import ParentRefT
-from yaml_to_mdd.fbs_generated.dataformat.ParentRefType import ParentRefType
-from yaml_to_mdd.fbs_generated.dataformat.ComplexValue import ComplexValueT
-from yaml_to_mdd.fbs_generated.dataformat.State import StateT
-from yaml_to_mdd.fbs_generated.dataformat.StateChart import StateChartT
-from yaml_to_mdd.fbs_generated.dataformat.StateTransition import StateTransitionT
 from yaml_to_mdd.ir.services import IRParamType
 
 if TYPE_CHECKING:
-    from yaml_to_mdd.ir.database import IRDatabase, IRVariant
-    from yaml_to_mdd.ir.services import IRDiagService, IRParam, IRParamType, IRRequest, IRResponse
+    from yaml_to_mdd.ir.database import IRDatabase
+    from yaml_to_mdd.ir.services import (
+        IRDiagService,
+        IRParam,
+        IRParamType,
+        IRRequest,
+        IRResponse,
+    )
     from yaml_to_mdd.ir.types import IRDOP, IRCompuMethod, IRCompuScale, IRDiagCodedType
 
 # Mapping from YAML protocol_short_name to CDA protocol names
@@ -117,16 +125,17 @@ class StringInterningBuilder(flatbuffers.Builder):
         offset = ecu_data.Pack(builder)
     """
 
-    def __init__(self, initialSize: int = 1024) -> None:
+    def __init__(self, initial_size: int = 1024) -> None:
         """Initialize builder with string cache.
 
         Args:
         ----
-            initialSize: Initial buffer size in bytes.
+            initial_size: Initial buffer size in bytes.
 
         """
-        super().__init__(initialSize)
+        super().__init__(initial_size)
         self._string_cache: dict[str, int] = {}
+        self._dop_offset_cache: dict[int, int] = {}  # id(DOPT) -> offset
 
     def CreateString(  # noqa: N802 - Matching FlatBuffers API
         self, s: str | bytes, encoding: str = "utf-8", errors: str = "strict"
@@ -148,10 +157,7 @@ class StringInterningBuilder(flatbuffers.Builder):
 
         """
         # Normalize to string for cache key
-        if isinstance(s, bytes):
-            cache_key = s.decode(encoding, errors)
-        else:
-            cache_key = s
+        cache_key = s.decode(encoding, errors) if isinstance(s, bytes) else s
 
         # Check cache first
         if cache_key in self._string_cache:
@@ -166,6 +172,36 @@ class StringInterningBuilder(flatbuffers.Builder):
     def strings_cached(self) -> int:
         """Return number of unique strings cached."""
         return len(self._string_cache)
+
+    def get_dop_offset(self, dop: Any) -> int | None:
+        """Get cached DOP offset if available.
+
+        Args:
+        ----
+            dop: The DOPT object to look up.
+
+        Returns:
+        -------
+            Cached offset or None if not cached.
+
+        """
+        return self._dop_offset_cache.get(id(dop))
+
+    def cache_dop_offset(self, dop: Any, offset: int) -> None:
+        """Cache a DOP offset for reuse.
+
+        Args:
+        ----
+            dop: The DOPT object.
+            offset: The serialized offset in the buffer.
+
+        """
+        self._dop_offset_cache[id(dop)] = offset
+
+    @property
+    def dops_cached(self) -> int:
+        """Return number of unique DOPs cached."""
+        return len(self._dop_offset_cache)
 
 
 # Union type tags for SimpleOrComplexValueEntry (CDA FlatBuffers schema)
@@ -245,18 +281,14 @@ class CDAComplexValueT:
         entries_type_offset = builder.EndVector()
 
         # Step 3: Create entries vector (offsets to tables)
-        builder.StartVector(
-            4, len(self._entries), 4
-        )  # elemSize=4 (offset), alignment=4
+        builder.StartVector(4, len(self._entries), 4)  # elemSize=4 (offset), alignment=4
         for offset in reversed(entry_offsets):
             builder.PrependUOffsetTRelative(offset)
         entries_offset = builder.EndVector()
 
         # Step 4: Create ComplexValue table with both vectors
         builder.StartObject(2)  # 2 fields: entries_type, entries
-        builder.PrependUOffsetTRelativeSlot(
-            0, entries_type_offset, 0
-        )  # slot 0 = entries_type
+        builder.PrependUOffsetTRelativeSlot(0, entries_type_offset, 0)  # slot 0 = entries_type
         builder.PrependUOffsetTRelativeSlot(1, entries_offset, 0)  # slot 1 = entries
         return int(builder.EndObject())
 
@@ -345,8 +377,62 @@ def _patch_complexvalue_pack() -> None:
     ComplexValueT.Pack = _complexvalue_cda_pack  # type: ignore[method-assign]
 
 
-# Apply the patch at module load time
+def _valuet_dop_caching_pack(self: ValueT, builder: flatbuffers.Builder) -> int:
+    """ValueT.Pack with DOP offset caching for size optimization.
+
+    If the builder has a cached offset for this DOP, reuse it instead of
+    serializing the DOP again. This reduces FlatBuffers size by ~50% when
+    many params share the same DOP.
+
+    Args:
+    ----
+        self: The ValueT instance.
+        builder: FlatBuffers builder instance (should be StringInterningBuilder).
+
+    Returns:
+    -------
+        Offset to the serialized Value table.
+
+    """
+    from yaml_to_mdd.fbs_generated.dataformat.Value import (
+        ValueAddDop,
+        ValueAddPhysicalDefaultValue,
+        ValueEnd,
+        ValueStart,
+    )
+
+    phys_default_value = None
+    if self.physicalDefaultValue is not None:
+        phys_default_value = builder.CreateString(self.physicalDefaultValue)
+
+    dop_offset = None
+    if self.dop is not None:
+        # Check if this DOP is already cached
+        if hasattr(builder, "get_dop_offset"):
+            dop_offset = builder.get_dop_offset(self.dop)
+
+        if dop_offset is None:
+            # Not cached - serialize and cache it
+            dop_offset = self.dop.Pack(builder)
+            if hasattr(builder, "cache_dop_offset"):
+                builder.cache_dop_offset(self.dop, dop_offset)
+
+    ValueStart(builder)
+    if phys_default_value is not None:
+        ValueAddPhysicalDefaultValue(builder, phys_default_value)
+    if dop_offset is not None:
+        ValueAddDop(builder, dop_offset)
+    return int(ValueEnd(builder))
+
+
+def _patch_valuet_pack() -> None:
+    """Patch ValueT.Pack to reuse DOP offsets when using StringInterningBuilder."""
+    ValueT.Pack = _valuet_dop_caching_pack  # type: ignore[method-assign]
+
+
+# Apply the patches at module load time
 _patch_complexvalue_pack()
+_patch_valuet_pack()
 
 
 @dataclass
@@ -413,9 +499,7 @@ class IRToFlatBuffersConverter:
         self._builder_size = builder_size
         self._dop_cache: dict[str, DOPT] = {}  # DOP name -> converted DOP
         self._protocol_cache: dict[str, ProtocolT] = {}  # Protocol name -> Protocol
-        self._all_services_cache: list[DiagServiceT] = (
-            []
-        )  # All services including variant-specific
+        self._all_services_cache: list[DiagServiceT] = []  # All services including variant-specific
 
     def convert(
         self,
@@ -506,9 +590,7 @@ class IRToFlatBuffersConverter:
         for cda_name, protocol in self._protocol_cache.items():
             # Create ComParamRefs for DoIP addressing parameters
             if "DoIP" in cda_name:
-                com_param_refs.extend(
-                    self._create_doip_com_param_refs(protocol, doip_addressing)
-                )
+                com_param_refs.extend(self._create_doip_com_param_refs(protocol, doip_addressing))
             else:
                 # For non-DoIP protocols, just add protocol reference
                 com_param_ref = ComParamRefT()
@@ -540,9 +622,7 @@ class IRToFlatBuffersConverter:
 
         return bytes(builder.Output())
 
-    def _create_variants(
-        self, db: "IRDatabase", base_diag_layer: DiagLayerT
-    ) -> list[VariantT]:
+    def _create_variants(self, db: IRDatabase, base_diag_layer: DiagLayerT) -> list[VariantT]:
         """Create Variant tables from IR variants.
 
         Args:
@@ -587,9 +667,7 @@ class IRToFlatBuffersConverter:
                         svc_name = svc.diagComm.shortName if svc.diagComm else ""
                         if svc_name in ir_variant.service_refs:
                             variant_services.append(svc)
-                    variant_layer.diagServices = (
-                        variant_services if variant_services else None
-                    )
+                    variant_layer.diagServices = variant_services if variant_services else None
                 else:
                     # No variant-specific services - inherit all from parent
                     variant_layer.diagServices = None
@@ -649,8 +727,7 @@ class IRToFlatBuffersConverter:
                     (
                         v
                         for v in variants
-                        if v.diagLayer
-                        and v.diagLayer.shortName == ir_variant.parent_ref
+                        if v.diagLayer and v.diagLayer.shortName == ir_variant.parent_ref
                     ),
                     None,
                 )
@@ -667,7 +744,7 @@ class IRToFlatBuffersConverter:
 
         return variants
 
-    def _create_state_charts(self, db: "IRDatabase") -> list[StateChartT]:
+    def _create_state_charts(self, db: IRDatabase) -> list[StateChartT]:
         """Create StateChart tables for sessions and security access.
 
         CDA uses StateCharts to track diagnostic session and security access states.
@@ -1089,6 +1166,30 @@ class IRToFlatBuffersConverter:
 
         return protocol
 
+    def _get_or_convert_dop(self, ir_dop: IRDOP) -> DOPT:
+        """Get a cached DOP or convert and cache it.
+
+        This ensures DOPs are shared across multiple param references,
+        reducing FlatBuffers size.
+
+        Args:
+        ----
+            ir_dop: The IR DOP to get or convert.
+
+        Returns:
+        -------
+            Cached or newly converted FlatBuffers DOPT instance.
+
+        """
+        dop_name = ir_dop.short_name
+        if dop_name in self._dop_cache:
+            return self._dop_cache[dop_name]
+
+        # Convert and cache
+        fbs_dop = self._convert_dop(ir_dop)
+        self._dop_cache[dop_name] = fbs_dop
+        return fbs_dop
+
     def _convert_dop(self, ir_dop: IRDOP) -> DOPT:
         """Convert IR DOP to FlatBuffers DOP.
 
@@ -1110,9 +1211,7 @@ class IRToFlatBuffersConverter:
 
         # Convert diagnostic coded type
         if ir_dop.diag_coded_type:
-            normal_dop.diagCodedType = self._convert_diag_coded_type(
-                ir_dop.diag_coded_type
-            )
+            normal_dop.diagCodedType = self._convert_diag_coded_type(ir_dop.diag_coded_type)
 
         # Convert computation method
         if ir_dop.compu_method:
@@ -1152,19 +1251,11 @@ class IRToFlatBuffersConverter:
             IRDiagCodedTypeName.LEADING_LENGTH_INFO_TYPE: (
                 DiagCodedTypeName.LEADING_LENGTH_INFO_TYPE
             ),
-            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (
-                DiagCodedTypeName.MIN_MAX_LENGTH_TYPE
-            ),
-            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (
-                DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE
-            ),
-            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (
-                DiagCodedTypeName.STANDARD_LENGTH_TYPE
-            ),
+            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (DiagCodedTypeName.MIN_MAX_LENGTH_TYPE),
+            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE),
+            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (DiagCodedTypeName.STANDARD_LENGTH_TYPE),
         }
-        dct.type = type_name_map.get(
-            ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE
-        )
+        dct.type = type_name_map.get(ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE)
 
         # Map base data type
         data_type_map = {
@@ -1177,9 +1268,7 @@ class IRToFlatBuffersConverter:
             IRDataType.A_BYTEFIELD: DataType.A_BYTEFIELD,
             IRDataType.A_FLOAT_64: DataType.A_FLOAT_64,
         }
-        dct.baseDataType = data_type_map.get(
-            ir_dct.base_data_type, DataType.A_BYTEFIELD
-        )
+        dct.baseDataType = data_type_map.get(ir_dct.base_data_type, DataType.A_BYTEFIELD)
 
         dct.isHighLowByteOrder = ir_dct.is_high_low_byte_order
 
@@ -1296,24 +1385,18 @@ class IRToFlatBuffersConverter:
 
         # Convert request (pass service_id for CodedConst generation)
         if ir_service.request:
-            service.request = self._convert_request(
-                ir_service.request, ir_service.service_id
-            )
+            service.request = self._convert_request(ir_service.request, ir_service.service_id)
 
         # Convert positive response(s)
         if ir_service.positive_response:
             service.posResponses = [
-                self._convert_response(
-                    ir_service.positive_response, ir_service.service_id
-                )
+                self._convert_response(ir_service.positive_response, ir_service.service_id)
             ]
 
         # Convert negative response(s)
         if ir_service.negative_response:
             service.negResponses = [
-                self._convert_response(
-                    ir_service.negative_response, ir_service.service_id
-                )
+                self._convert_response(ir_service.negative_response, ir_service.service_id)
             ]
 
         return service
@@ -1465,7 +1548,14 @@ class IRToFlatBuffersConverter:
             param.specificDataType = ParamSpecificData.MatchingRequestParam
             param.specificData = self._create_matching_param_data(ir_param)
         elif ir_param.param_type == IRParamType.VALUE:
-            if ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
+            if ir_param.dop:
+                # Inline DOP object - convert directly
+                value = ValueT()
+                value.dop = self._get_or_convert_dop(ir_param.dop)
+                param.specificDataType = ParamSpecificData.Value
+                param.specificData = value
+            elif ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
+                # DOP reference - lookup from cache
                 value = ValueT()
                 value.dop = self._dop_cache[ir_param.dop_ref]
                 param.specificDataType = ParamSpecificData.Value
@@ -1477,7 +1567,13 @@ class IRToFlatBuffersConverter:
         elif ir_param.param_type == IRParamType.PHYS_CONST:
             # PHYS_CONST - physical constant value
             # Uses Value type with physical default
-            if ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
+            if ir_param.dop:
+                # Inline DOP object - convert directly
+                value = ValueT()
+                value.dop = self._get_or_convert_dop(ir_param.dop)
+                param.specificDataType = ParamSpecificData.Value
+                param.specificData = value
+            elif ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
                 value = ValueT()
                 value.dop = self._dop_cache[ir_param.dop_ref]
                 param.specificDataType = ParamSpecificData.Value
@@ -1486,6 +1582,12 @@ class IRToFlatBuffersConverter:
         elif ir_param.coded_value is not None:
             param.specificDataType = ParamSpecificData.CodedConst
             param.specificData = self._create_coded_const_data(ir_param)
+        elif ir_param.dop:
+            # Inline DOP object - convert directly
+            value = ValueT()
+            value.dop = self._get_or_convert_dop(ir_param.dop)
+            param.specificDataType = ParamSpecificData.Value
+            param.specificData = value
         elif ir_param.dop_ref and ir_param.dop_ref in self._dop_cache:
             value = ValueT()
             value.dop = self._dop_cache[ir_param.dop_ref]
@@ -1515,7 +1617,9 @@ class IRToFlatBuffersConverter:
         diag_coded_type.specificData = std_len
 
         coded_const = CodedConstT()
-        coded_const.codedValue = str(ir_param.coded_value) if ir_param.coded_value is not None else "0"
+        coded_const.codedValue = (
+            str(ir_param.coded_value) if ir_param.coded_value is not None else "0"
+        )
         coded_const.diagCodedType = diag_coded_type
 
         return coded_const
