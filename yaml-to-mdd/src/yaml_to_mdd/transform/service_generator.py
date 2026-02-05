@@ -455,12 +455,6 @@ def generate_security_access_services(
                     byte_length=1,
                     semantic="SUBFUNCTION",
                 ),
-                _create_value_param(
-                    short_name="SecuritySeed",
-                    byte_position=2,
-                    dop_ref="DOP_EndOfPDU_ByteArray",
-                    semantic="DATA",
-                ),
             ),
             constant_prefix=bytes([0x67, request_seed_sf]),
         )
@@ -527,6 +521,33 @@ def generate_security_access_services(
             constant_prefix=bytes([0x67, send_key_sf]),
         )
 
+        # Negative response for failed authentication
+        neg_response_key = IRResponse(
+            short_name=f"NR_{send_key_name}",
+            params=(
+                _create_coded_const_param(
+                    short_name="SID_NR",
+                    byte_position=0,
+                    coded_value=0x7F,
+                    semantic="SERVICE_ID",
+                ),
+                _create_matching_request_param(
+                    short_name="SIDRQ_NR",
+                    byte_position=1,
+                    request_byte_pos=0,
+                    byte_length=1,
+                    semantic="SERVICEIDRQ",
+                ),
+                _create_value_param(
+                    short_name="NRC",
+                    byte_position=2,
+                    dop_ref="DOP_UINT8",
+                    semantic="DATA",
+                ),
+            ),
+            constant_prefix=bytes([0x7F, 0x27]),
+        )
+
         services.append(
             IRDiagService(
                 short_name=send_key_name,
@@ -536,6 +557,7 @@ def generate_security_access_services(
                 service_type=IRServiceType.POS_RESPONSE_WITH_SUBFUNCTION,
                 request=request_key,
                 positive_response=response_key,
+                negative_response=neg_response_key,
                 variant_ref=variant_ref,
             )
         )

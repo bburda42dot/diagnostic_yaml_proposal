@@ -313,7 +313,9 @@ class YamlToIRTransformer:
             sessions, security = self._resolve_access(doc, routine_def.access)
 
             # Generate services for each supported operation
-            services = generate_routine_services(routine_id, routine_def, sessions, security)
+            services = generate_routine_services(
+                routine_id, routine_def, sessions, security
+            )
 
             db.routine_services[routine_id] = []
             for service in services:
@@ -371,7 +373,11 @@ class YamlToIRTransformer:
             return
 
         # Check if security access is enabled in services config
-        if doc.services and doc.services.securityAccess and not doc.services.securityAccess.enabled:
+        if (
+            doc.services
+            and doc.services.securityAccess
+            and not doc.services.securityAccess.enabled
+        ):
             return
 
         # Extract security levels
@@ -465,7 +471,9 @@ class YamlToIRTransformer:
                 # List of subfunctions - use default naming
                 subfunctions = {
                     "Deauthenticate": (
-                        auth_cfg.subfunctions[0] if len(auth_cfg.subfunctions) > 0 else 0x00
+                        auth_cfg.subfunctions[0]
+                        if len(auth_cfg.subfunctions) > 0
+                        else 0x00
                     ),
                 }
 
@@ -512,9 +520,14 @@ class YamlToIRTransformer:
         if not doc.services:
             return
 
-        has_download = doc.services.requestDownload and doc.services.requestDownload.enabled
+        has_download = (
+            doc.services.requestDownload and doc.services.requestDownload.enabled
+        )
         has_transfer = doc.services.transferData and doc.services.transferData.enabled
-        has_exit = doc.services.requestTransferExit and doc.services.requestTransferExit.enabled
+        has_exit = (
+            doc.services.requestTransferExit
+            and doc.services.requestTransferExit.enabled
+        )
 
         # Only generate if at least one is enabled
         if not (has_download or has_transfer or has_exit):
@@ -707,7 +720,9 @@ class YamlToIRTransformer:
 
         # Process each DTC
         for dtc_code, dtc_def in doc.dtcs.items():
-            ir_dtc = self._transform_dtc(dtc_code, dtc_def, default_snapshots, default_extended)
+            ir_dtc = self._transform_dtc(
+                dtc_code, dtc_def, default_snapshots, default_extended
+            )
             db.dtcs.append(ir_dtc)
 
     def _transform_dtc(
