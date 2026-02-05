@@ -5,18 +5,132 @@ from __future__ import annotations
 from yaml_to_mdd.ir.services import (
     IRDiagService,
     IRParam,
+    IRParamType,
     IRRequest,
     IRResponse,
     IRServiceType,
 )
+from yaml_to_mdd.ir.types import (
+    IRDOP,
+    IRDataType,
+    IRDiagCodedType,
+    IRDiagCodedTypeName,
+)
 from yaml_to_mdd.models.dids import DIDDefinition
 from yaml_to_mdd.models.routines import RoutineDefinition
+
+
+def _create_coded_const_param(
+    short_name: str,
+    byte_position: int,
+    coded_value: int,
+    bit_length: int = 8,
+    semantic: str | None = None,
+) -> IRParam:
+    """Create a CodedConst parameter with proper DiagCodedType.
+
+    Args:
+    ----
+        short_name: Parameter name (e.g., "SID_RQ", "DID_RQ")
+        byte_position: Position in message
+        coded_value: The constant value
+        bit_length: Bit length (default 8 for 1-byte values)
+        semantic: Semantic hint (SERVICE_ID, DID, etc.)
+
+    Returns:
+    -------
+        IRParam with param_type=CODED_CONST
+
+    """
+    diag_type = IRDiagCodedType(
+        type_name=IRDiagCodedTypeName.STANDARD_LENGTH_TYPE,
+        base_data_type=IRDataType.A_UINT_32,
+        bit_length=bit_length,
+        is_high_low_byte_order=True,
+    )
+    return IRParam(
+        short_name=short_name,
+        byte_position=byte_position,
+        semantic=semantic,
+        param_type=IRParamType.CODED_CONST,
+        coded_value=coded_value,
+        coded_diag_type=diag_type,
+        bit_length=bit_length,
+    )
+
+
+def _create_matching_request_param(
+    short_name: str,
+    byte_position: int,
+    request_byte_pos: int,
+    byte_length: int,
+    semantic: str | None = None,
+) -> IRParam:
+    """Create a MatchingRequestParam that references request data.
+
+    Args:
+    ----
+        short_name: Parameter name (e.g., "DID_PR")
+        byte_position: Position in response
+        request_byte_pos: Position in request to copy from
+        byte_length: Number of bytes to copy
+        semantic: Semantic hint
+
+    Returns:
+    -------
+        IRParam with param_type=MATCHING_REQUEST_PARAM
+
+    """
+    return IRParam(
+        short_name=short_name,
+        byte_position=byte_position,
+        semantic=semantic,
+        param_type=IRParamType.MATCHING_REQUEST_PARAM,
+        matching_request_byte_pos=request_byte_pos,
+        matching_byte_length=byte_length,
+    )
+
+
+def _create_value_param(
+    short_name: str,
+    byte_position: int,
+    dop: IRDOP | None = None,
+    dop_ref: str | None = None,
+    semantic: str = "DATA",
+    physical_default_value: str | None = None,
+) -> IRParam:
+    """Create a Value parameter with DOP reference.
+
+    Args:
+    ----
+        short_name: Parameter name
+        byte_position: Position in message
+        dop: Data Object Property for encoding/decoding
+        dop_ref: Legacy DOP reference string (deprecated, use dop)
+        semantic: Semantic hint (typically "DATA")
+        physical_default_value: Optional default value
+
+    Returns:
+    -------
+        IRParam with param_type=VALUE
+
+    """
+    return IRParam(
+        short_name=short_name,
+        byte_position=byte_position,
+        semantic=semantic,
+        param_type=IRParamType.VALUE,
+        dop=dop,
+        dop_ref=dop_ref,
+        physical_default_value=physical_default_value,
+    )
 
 
 def generate_read_did_service(
     did_id: int,
     did_def: DIDDefinition,
     dop_name: str,
+    response_dop: IRDOP | None = None,
     sessions: tuple[str, ...] = (),
     security: tuple[str, ...] = (),
 ) -> IRDiagService:
@@ -28,7 +142,8 @@ def generate_read_did_service(
     ----
         did_id: DID identifier (0x0000-0xFFFF).
         did_def: DID definition from YAML.
-        dop_name: Name of the DOP for this DID's data.
+        dop_name: Name of the DOP for this DID's data (deprecated, use response_dop).
+        response_dop: Full IRDOP for response data.
         sessions: Required sessions.
         security: Required security levels.
 
@@ -43,46 +158,54 @@ def generate_read_did_service(
     request = IRRequest(
         short_name=f"RQ_{service_name}",
         params=(
-            IRParam(
-                short_name="ServiceID",
+            _create_coded_const_param(
+                short_name="SID_RQ",
                 byte_position=0,
+                coded_value=0x22,
                 semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="DID",
+            _create_coded_const_param(
+                short_name="DID_RQ",
                 byte_position=1,
-                dop_ref="DOP_DID",
-                semantic="DATA",
                 coded_value=did_id,
                 bit_length=16,
+                semantic="DID",
             ),
         ),
         constant_prefix=bytes([0x22, (did_id >> 8) & 0xFF, did_id & 0xFF]),
     )
 
     # Response: [SID+0x40=0x62][DID_HI][DID_LO][DATA...]
+    response_params: list[IRParam] = [
+        _create_coded_const_param(
+            short_name="SID_PR",
+            byte_position=0,
+            coded_value=0x62,
+            semantic="SERVICE_ID",
+        ),
+        _create_matching_request_param(
+            short_name="DID_PR",
+            byte_position=1,
+            request_byte_pos=1,
+            byte_length=2,
+            semantic="DID",
+        ),
+    ]
+
+    # Add data param
+    response_params.append(
+        _create_value_param(
+            short_name=did_def.name,
+            byte_position=3,
+            dop=response_dop,
+            dop_ref=dop_name if response_dop is None else None,
+            semantic="DATA",
+        )
+    )
+
     response = IRResponse(
         short_name=f"PR_{service_name}",
-        params=(
-            IRParam(
-                short_name="ServiceID",
-                byte_position=0,
-                semantic="SERVICE_ID",
-            ),
-            IRParam(
-                short_name="DID",
-                byte_position=1,
-                dop_ref="DOP_DID",
-                coded_value=did_id,
-                bit_length=16,
-            ),
-            IRParam(
-                short_name=did_def.name,
-                byte_position=3,
-                dop_ref=dop_name,
-                semantic="DATA",
-            ),
-        ),
+        params=tuple(response_params),
         constant_prefix=bytes([0x62, (did_id >> 8) & 0xFF, did_id & 0xFF]),
     )
 
@@ -102,6 +225,7 @@ def generate_write_did_service(
     did_id: int,
     did_def: DIDDefinition,
     dop_name: str,
+    request_dop: IRDOP | None = None,
     sessions: tuple[str, ...] = (),
     security: tuple[str, ...] = (),
 ) -> IRDiagService:
@@ -113,7 +237,8 @@ def generate_write_did_service(
     ----
         did_id: DID identifier.
         did_def: DID definition.
-        dop_name: DOP name for data.
+        dop_name: DOP name for data (deprecated, use request_dop).
+        request_dop: Full IRDOP for request data.
         sessions: Required sessions.
         security: Required security levels.
 
@@ -128,18 +253,24 @@ def generate_write_did_service(
     request = IRRequest(
         short_name=f"RQ_{service_name}",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="DID",
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x2E,
+                semantic="SERVICE_ID",
+            ),
+            _create_coded_const_param(
+                short_name="DID_RQ",
                 byte_position=1,
-                dop_ref="DOP_DID",
                 coded_value=did_id,
                 bit_length=16,
+                semantic="DID",
             ),
-            IRParam(
+            _create_value_param(
                 short_name=did_def.name,
                 byte_position=3,
-                dop_ref=dop_name,
+                dop=request_dop,
+                dop_ref=dop_name if request_dop is None else None,
                 semantic="DATA",
             ),
         ),
@@ -150,13 +281,18 @@ def generate_write_did_service(
     response = IRResponse(
         short_name=f"PR_{service_name}",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="DID",
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x6E,
+                semantic="SERVICE_ID",
+            ),
+            _create_matching_request_param(
+                short_name="DID_PR",
                 byte_position=1,
-                dop_ref="DOP_DID",
-                coded_value=did_id,
-                bit_length=16,
+                request_byte_pos=1,
+                byte_length=2,
+                semantic="DID",
             ),
         ),
         constant_prefix=bytes([0x6E, (did_id >> 8) & 0xFF, did_id & 0xFF]),
@@ -200,13 +336,17 @@ def generate_session_control_services(
         request = IRRequest(
             short_name=f"RQ_{service_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SessionType",
+                _create_coded_const_param(
+                    short_name="SID_RQ",
+                    byte_position=0,
+                    coded_value=0x10,
+                    semantic="SERVICE_ID",
+                ),
+                _create_coded_const_param(
+                    short_name="SF_RQ",
                     byte_position=1,
-                    semantic="SUBFUNCTION",
                     coded_value=session_id,
-                    bit_length=8,
+                    semantic="SUBFUNCTION",
                 ),
             ),
             constant_prefix=bytes([0x10, session_id]),
@@ -215,13 +355,18 @@ def generate_session_control_services(
         response = IRResponse(
             short_name=f"PR_{service_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SessionType",
+                _create_coded_const_param(
+                    short_name="SID_PR",
+                    byte_position=0,
+                    coded_value=0x50,
+                    semantic="SERVICE_ID",
+                ),
+                _create_matching_request_param(
+                    short_name="SF_PR",
                     byte_position=1,
+                    request_byte_pos=1,
+                    byte_length=1,
                     semantic="SUBFUNCTION",
-                    coded_value=session_id,
-                    bit_length=8,
                 ),
             ),
             constant_prefix=bytes([0x50, session_id]),
@@ -278,13 +423,17 @@ def generate_security_access_services(
         request = IRRequest(
             short_name=f"RQ_{request_seed_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SecurityAccessType",
+                _create_coded_const_param(
+                    short_name="SID_RQ",
+                    byte_position=0,
+                    coded_value=0x27,
+                    semantic="SERVICE_ID",
+                ),
+                _create_coded_const_param(
+                    short_name="SF_RQ",
                     byte_position=1,
-                    semantic="SUBFUNCTION",
                     coded_value=request_seed_sf,
-                    bit_length=8,
+                    semantic="SUBFUNCTION",
                 ),
             ),
             constant_prefix=bytes([0x27, request_seed_sf]),
@@ -293,15 +442,20 @@ def generate_security_access_services(
         response = IRResponse(
             short_name=f"PR_{request_seed_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SecurityAccessType",
-                    byte_position=1,
-                    semantic="SUBFUNCTION",
-                    coded_value=request_seed_sf,
-                    bit_length=8,
+                _create_coded_const_param(
+                    short_name="SID_PR",
+                    byte_position=0,
+                    coded_value=0x67,
+                    semantic="SERVICE_ID",
                 ),
-                IRParam(
+                _create_matching_request_param(
+                    short_name="SF_PR",
+                    byte_position=1,
+                    request_byte_pos=1,
+                    byte_length=1,
+                    semantic="SUBFUNCTION",
+                ),
+                _create_value_param(
                     short_name="SecuritySeed",
                     byte_position=2,
                     dop_ref="DOP_EndOfPDU_ByteArray",
@@ -331,15 +485,19 @@ def generate_security_access_services(
         request_key = IRRequest(
             short_name=f"RQ_{send_key_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SecurityAccessType",
-                    byte_position=1,
-                    semantic="SUBFUNCTION",
-                    coded_value=send_key_sf,
-                    bit_length=8,
+                _create_coded_const_param(
+                    short_name="SID_RQ",
+                    byte_position=0,
+                    coded_value=0x27,
+                    semantic="SERVICE_ID",
                 ),
-                IRParam(
+                _create_coded_const_param(
+                    short_name="SF_RQ",
+                    byte_position=1,
+                    coded_value=send_key_sf,
+                    semantic="SUBFUNCTION",
+                ),
+                _create_value_param(
                     short_name="SecurityKey",
                     byte_position=2,
                     dop_ref="DOP_EndOfPDU_ByteArray",
@@ -352,13 +510,18 @@ def generate_security_access_services(
         response_key = IRResponse(
             short_name=f"PR_{send_key_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SecurityAccessType",
+                _create_coded_const_param(
+                    short_name="SID_PR",
+                    byte_position=0,
+                    coded_value=0x67,
+                    semantic="SERVICE_ID",
+                ),
+                _create_matching_request_param(
+                    short_name="SF_PR",
                     byte_position=1,
+                    request_byte_pos=1,
+                    byte_length=1,
                     semantic="SUBFUNCTION",
-                    coded_value=send_key_sf,
-                    bit_length=8,
                 ),
             ),
             constant_prefix=bytes([0x67, send_key_sf]),
@@ -406,13 +569,17 @@ def generate_ecu_reset_services(
         request = IRRequest(
             short_name=f"RQ_{reset_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="ResetType",
+                _create_coded_const_param(
+                    short_name="SID_RQ",
+                    byte_position=0,
+                    coded_value=0x11,
+                    semantic="SERVICE_ID",
+                ),
+                _create_coded_const_param(
+                    short_name="SF_RQ",
                     byte_position=1,
-                    semantic="SUBFUNCTION",
                     coded_value=subfunction,
-                    bit_length=8,
+                    semantic="SUBFUNCTION",
                 ),
             ),
             constant_prefix=bytes([0x11, subfunction]),
@@ -421,13 +588,18 @@ def generate_ecu_reset_services(
         response = IRResponse(
             short_name=f"PR_{reset_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="ResetType",
+                _create_coded_const_param(
+                    short_name="SID_PR",
+                    byte_position=0,
+                    coded_value=0x51,
+                    semantic="SERVICE_ID",
+                ),
+                _create_matching_request_param(
+                    short_name="SF_PR",
                     byte_position=1,
+                    request_byte_pos=1,
+                    byte_length=1,
                     semantic="SUBFUNCTION",
-                    coded_value=subfunction,
-                    bit_length=8,
                 ),
             ),
             constant_prefix=bytes([0x51, subfunction]),
@@ -475,34 +647,43 @@ def generate_authentication_services(
         request = IRRequest(
             short_name=f"RQ_{service_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="SUBFUNCTION",
+                _create_coded_const_param(
+                    short_name="SID_RQ",
+                    byte_position=0,
+                    coded_value=0x29,
+                    semantic="SERVICE_ID",
+                ),
+                _create_coded_const_param(
+                    short_name="SF_RQ",
                     byte_position=1,
-                    semantic="SUBFUNCTION",
                     coded_value=subfunction,
-                    bit_length=8,
+                    semantic="SUBFUNCTION",
                 ),
             ),
             constant_prefix=bytes([0x29, subfunction]),
         )
 
         # Response params depend on subfunction
-        response_params = [
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="SUBFUNCTION",
+        response_params: list[IRParam] = [
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x69,
+                semantic="SERVICE_ID",
+            ),
+            _create_matching_request_param(
+                short_name="SF_PR",
                 byte_position=1,
+                request_byte_pos=1,
+                byte_length=1,
                 semantic="SUBFUNCTION",
-                coded_value=subfunction,
-                bit_length=8,
             ),
         ]
 
         # Configuration response includes AuthenticationReturnParameter
         if name == "Configuration":
             response_params.append(
-                IRParam(
+                _create_value_param(
                     short_name="AuthenticationReturnParameter",
                     byte_position=2,
                     dop_ref="DOP_AuthReturnParam",
@@ -564,29 +745,31 @@ def generate_communication_control_services(
         service_name = f"{name}_Control"
 
         # Request: [SID=0x28][ControlType][CommunicationType]
-        request_params = [
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="ControlType",
-                byte_position=1,
-                semantic="SUBFUNCTION",
-                coded_value=control_type,
-                bit_length=8,
+        request_params: list[IRParam] = [
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x28,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
+            _create_coded_const_param(
+                short_name="SF_RQ",
+                byte_position=1,
+                coded_value=control_type,
+                semantic="SUBFUNCTION",
+            ),
+            _create_coded_const_param(
                 short_name="CommunicationType",
                 byte_position=2,
-                dop_ref="DOP_UINT8",
-                semantic="DATA",
                 coded_value=1,  # normalComm
-                bit_length=8,
+                semantic="DATA",
             ),
         ]
 
         # TemporalSync has additional parameter
         if name == "TemporalSync":
             request_params.append(
-                IRParam(
+                _create_value_param(
                     short_name="temporalEraId",
                     byte_position=3,
                     dop_ref="DOP_INT32",
@@ -603,13 +786,18 @@ def generate_communication_control_services(
         response = IRResponse(
             short_name=f"PR_{service_name}",
             params=(
-                IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-                IRParam(
-                    short_name="ControlType",
+                _create_coded_const_param(
+                    short_name="SID_PR",
+                    byte_position=0,
+                    coded_value=0x68,
+                    semantic="SERVICE_ID",
+                ),
+                _create_matching_request_param(
+                    short_name="SF_PR",
                     byte_position=1,
+                    request_byte_pos=1,
+                    byte_length=1,
                     semantic="SUBFUNCTION",
-                    coded_value=control_type,
-                    bit_length=8,
                 ),
             ),
             constant_prefix=bytes([0x68, control_type]),
@@ -648,26 +836,31 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     request_download_request = IRRequest(
         short_name="RQ_RequestDownload",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x34,
+                semantic="SERVICE_ID",
+            ),
+            _create_value_param(
                 short_name="DataFormatIdentifier",
                 byte_position=1,
                 dop_ref="DOP_UINT8",
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="AddressAndLengthFormatIdentifier",
                 byte_position=2,
                 dop_ref="DOP_UINT8",
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="MemoryAddress",
                 byte_position=3,
                 dop_ref="DOP_ByteArray",
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="MemorySize",
                 byte_position=7,  # After 4-byte address
                 dop_ref="DOP_ByteArray",
@@ -680,14 +873,19 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     request_download_response = IRResponse(
         short_name="PR_RequestDownload",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x74,
+                semantic="SERVICE_ID",
+            ),
+            _create_value_param(
                 short_name="LengthFormatIdentifier",
                 byte_position=1,
                 dop_ref="DOP_UINT8",
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="MaxNumberOfBlockLength",
                 byte_position=2,
                 dop_ref="DOP_UINT32",
@@ -712,14 +910,19 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     transfer_data_request = IRRequest(
         short_name="RQ_TransferData",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x36,
+                semantic="SERVICE_ID",
+            ),
+            _create_value_param(
                 short_name="BlockSequenceCounter",
                 byte_position=1,
                 dop_ref="DOP_UINT8",
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="TransferRequestParameterRecord",
                 byte_position=2,
                 dop_ref="DOP_EndOfPDU_ByteArray",
@@ -732,14 +935,20 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     transfer_data_response = IRResponse(
         short_name="PR_TransferData",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="BlockSequenceCounter",
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x76,
+                semantic="SERVICE_ID",
+            ),
+            _create_matching_request_param(
+                short_name="BlockSequenceCounter_PR",
                 byte_position=1,
-                dop_ref="DOP_UINT8",
+                request_byte_pos=1,
+                byte_length=1,
                 semantic="DATA",
             ),
-            IRParam(
+            _create_value_param(
                 short_name="TransferRequestParameterRecord",
                 byte_position=2,
                 dop_ref="DOP_EndOfPDU_ByteArray",
@@ -764,7 +973,12 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     transfer_exit_request = IRRequest(
         short_name="RQ_TransferExit",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x37,
+                semantic="SERVICE_ID",
+            ),
         ),
         constant_prefix=bytes([0x37]),
     )
@@ -772,7 +986,12 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     transfer_exit_response = IRResponse(
         short_name="PR_TransferExit",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x77,
+                semantic="SERVICE_ID",
+            ),
         ),
         constant_prefix=bytes([0x77]),
     )
@@ -841,21 +1060,25 @@ def _generate_routine_start(
     service_name = f"Start_{routine_def.name}"
 
     # Request: [SID=0x31][SF=0x01][RID_HI][RID_LO][params...]
-    request_params = [
-        IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-        IRParam(
-            short_name="Subfunction",
-            byte_position=1,
-            semantic="SUBFUNCTION",
-            coded_value=0x01,
-            bit_length=8,
+    request_params: list[IRParam] = [
+        _create_coded_const_param(
+            short_name="SID_RQ",
+            byte_position=0,
+            coded_value=0x31,
+            semantic="SERVICE_ID",
         ),
-        IRParam(
-            short_name="RoutineID",
+        _create_coded_const_param(
+            short_name="SF_RQ",
+            byte_position=1,
+            coded_value=0x01,
+            semantic="SUBFUNCTION",
+        ),
+        _create_coded_const_param(
+            short_name="RID_RQ",
             byte_position=2,
-            dop_ref="DOP_RID",
             coded_value=routine_id,
             bit_length=16,
+            semantic="DATA",
         ),
     ]
 
@@ -870,20 +1093,25 @@ def _generate_routine_start(
     response = IRResponse(
         short_name=f"{service_name}_Response",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="Subfunction",
-                byte_position=1,
-                semantic="SUBFUNCTION",
-                coded_value=0x01,
-                bit_length=8,
+            _create_coded_const_param(
+                short_name="SID_PR",
+                byte_position=0,
+                coded_value=0x71,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="RoutineID",
+            _create_matching_request_param(
+                short_name="SF_PR",
+                byte_position=1,
+                request_byte_pos=1,
+                byte_length=1,
+                semantic="SUBFUNCTION",
+            ),
+            _create_matching_request_param(
+                short_name="RID_PR",
                 byte_position=2,
-                dop_ref="DOP_RID",
-                coded_value=routine_id,
-                bit_length=16,
+                request_byte_pos=2,
+                byte_length=2,
+                semantic="DATA",
             ),
         ),
         constant_prefix=bytes(
@@ -916,20 +1144,24 @@ def _generate_routine_stop(
     request = IRRequest(
         short_name=f"{service_name}_Request",
         params=(
-            IRParam(short_name="ServiceID", byte_position=0, semantic="SERVICE_ID"),
-            IRParam(
-                short_name="Subfunction",
-                byte_position=1,
-                semantic="SUBFUNCTION",
-                coded_value=0x02,
-                bit_length=8,
+            _create_coded_const_param(
+                short_name="SID_RQ",
+                byte_position=0,
+                coded_value=0x31,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="RoutineID",
+            _create_coded_const_param(
+                short_name="SF_RQ",
+                byte_position=1,
+                coded_value=0x02,
+                semantic="SUBFUNCTION",
+            ),
+            _create_coded_const_param(
+                short_name="RID_RQ",
                 byte_position=2,
-                dop_ref="DOP_RID",
                 coded_value=routine_id,
                 bit_length=16,
+                semantic="DATA",
             ),
         ),
         constant_prefix=bytes(
@@ -940,23 +1172,25 @@ def _generate_routine_stop(
     response = IRResponse(
         short_name=f"{service_name}_Response",
         params=(
-            IRParam(
-                short_name="ServiceID",
+            _create_coded_const_param(
+                short_name="SID_PR",
                 byte_position=0,
                 coded_value=0x71,
-                bit_length=8,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="Subfunction",
+            _create_matching_request_param(
+                short_name="SF_PR",
                 byte_position=1,
-                coded_value=0x02,
-                bit_length=8,
+                request_byte_pos=1,
+                byte_length=1,
+                semantic="SUBFUNCTION",
             ),
-            IRParam(
-                short_name="RoutineID",
+            _create_matching_request_param(
+                short_name="RID_PR",
                 byte_position=2,
-                coded_value=routine_id,
-                bit_length=16,
+                request_byte_pos=2,
+                byte_length=2,
+                semantic="DATA",
             ),
         ),
         constant_prefix=bytes(
@@ -989,23 +1223,24 @@ def _generate_routine_result(
     request = IRRequest(
         short_name=f"{service_name}_Request",
         params=(
-            IRParam(
-                short_name="ServiceID",
+            _create_coded_const_param(
+                short_name="SID_RQ",
                 byte_position=0,
                 coded_value=0x31,
-                bit_length=8,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="Subfunction",
+            _create_coded_const_param(
+                short_name="SF_RQ",
                 byte_position=1,
                 coded_value=0x03,
-                bit_length=8,
+                semantic="SUBFUNCTION",
             ),
-            IRParam(
-                short_name="RoutineID",
+            _create_coded_const_param(
+                short_name="RID_RQ",
                 byte_position=2,
                 coded_value=routine_id,
                 bit_length=16,
+                semantic="DATA",
             ),
         ),
         constant_prefix=bytes(
@@ -1016,23 +1251,25 @@ def _generate_routine_result(
     response = IRResponse(
         short_name=f"{service_name}_Response",
         params=(
-            IRParam(
-                short_name="ServiceID",
+            _create_coded_const_param(
+                short_name="SID_PR",
                 byte_position=0,
                 coded_value=0x71,
-                bit_length=8,
+                semantic="SERVICE_ID",
             ),
-            IRParam(
-                short_name="Subfunction",
+            _create_matching_request_param(
+                short_name="SF_PR",
                 byte_position=1,
-                coded_value=0x03,
-                bit_length=8,
+                request_byte_pos=1,
+                byte_length=1,
+                semantic="SUBFUNCTION",
             ),
-            IRParam(
-                short_name="RoutineID",
+            _create_matching_request_param(
+                short_name="RID_PR",
                 byte_position=2,
-                coded_value=routine_id,
-                bit_length=16,
+                request_byte_pos=2,
+                byte_length=2,
+                semantic="DATA",
             ),
         ),
         constant_prefix=bytes(
@@ -1061,4 +1298,8 @@ __all__ = [
     "generate_security_access_services",
     "generate_ecu_reset_services",
     "generate_routine_services",
+    # Helper functions for creating params with explicit types
+    "_create_coded_const_param",
+    "_create_matching_request_param",
+    "_create_value_param",
 ]
