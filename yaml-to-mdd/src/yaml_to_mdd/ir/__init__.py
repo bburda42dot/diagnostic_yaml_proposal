@@ -21,6 +21,7 @@ from yaml_to_mdd.ir.database import (
 from yaml_to_mdd.ir.services import (
     IRDiagService,
     IRParam,
+    IRParamType,
     IRRequest,
     IRResponse,
     IRServiceType,
@@ -48,6 +49,7 @@ __all__ = [
     "IRLimit",
     # Services
     "IRParam",
+    "IRParamType",
     "IRRequest",
     "IRResponse",
     "IRDiagService",

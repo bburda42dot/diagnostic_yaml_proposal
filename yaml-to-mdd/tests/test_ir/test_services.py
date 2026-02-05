@@ -3,10 +3,46 @@
 from yaml_to_mdd.ir.services import (
     IRDiagService,
     IRParam,
+    IRParamType,
     IRRequest,
     IRResponse,
     IRServiceType,
 )
+
+
+class TestIRParamType:
+    """Tests for IRParamType enum."""
+
+    def test_values_match_flatbuffers_enum(self) -> None:
+        """Verify enum values match FlatBuffers ParamSpecificData."""
+        assert IRParamType.NONE.value == 0
+        assert IRParamType.CODED_CONST.value == 1
+        assert IRParamType.MATCHING_REQUEST_PARAM.value == 3
+        assert IRParamType.VALUE.value == 7
+
+    def test_all_expected_types_exist(self) -> None:
+        """Verify all required param types are defined."""
+        required = [
+            "NONE",
+            "CODED_CONST",
+            "DYNAMIC",
+            "MATCHING_REQUEST_PARAM",
+            "NRC_CONST",
+            "PHYS_CONST",
+            "RESERVED",
+            "VALUE",
+            "TABLE_ENTRY",
+            "TABLE_KEY",
+            "TABLE_STRUCT",
+            "SYSTEM",
+            "LENGTH_KEY_REF",
+        ]
+        for name in required:
+            assert hasattr(IRParamType, name), f"Missing IRParamType.{name}"
+
+    def test_none_is_invalid_state(self) -> None:
+        """NONE should be 0 to match FlatBuffers default (unset = invalid)."""
+        assert IRParamType.NONE.value == 0
 
 
 class TestIRServiceType:
