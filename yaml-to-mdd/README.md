@@ -151,16 +151,16 @@ The converter produces MDD files that match reference ODX-derived MDDs:
 The converter produces functionally equivalent MDD files but with some differences
 compared to ODX-derived (Kotlin odx-converter) output:
 
-| ODX Feature | Status | Notes |
-| --- | --- | --- |
-| `longName` on DiagComm/DiagLayer | Not emitted | ODX contains multilingual long names; YAML has no equivalent field |
-| `functClasses` on DiagLayer | Not emitted | Functional classification metadata from ODX |
-| `stateTransitionRefs` on State | Not emitted | ODX state charts carry explicit transition refs |
-| ComParams (full ProtStack) | Not converted | YAML `comparams` section is parsed but not serialized to MDD |
-| SDGs (Special Data Groups) | Not converted | YAML `sdgs` section is parsed but not serialized to MDD |
-| ECU Jobs (SingleEcuJob) | Not converted | YAML `ecu_jobs` section is parsed but not serialized to MDD |
-| Complex types (structs, arrays) | Not converted | Struct/array DOPs not yet mapped to MDD |
-| Audience gating | Partial | Audience-based filtering works for DIDs/routines but is not serialized as `Audience` tables in MDD |
+| ODX Feature                      | Status        | Notes                                                                                              |
+| -------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
+| `longName` on DiagComm/DiagLayer | Not emitted   | ODX contains multilingual long names; YAML has no equivalent field                                 |
+| `functClasses` on DiagLayer      | Not emitted   | Functional classification metadata from ODX                                                        |
+| `stateTransitionRefs` on State   | Not emitted   | ODX state charts carry explicit transition refs                                                    |
+| ComParams (full ProtStack)       | Not converted | YAML `comparams` section is parsed but not serialized to MDD                                       |
+| SDGs (Special Data Groups)       | Not converted | YAML `sdgs` section is parsed but not serialized to MDD                                            |
+| ECU Jobs (SingleEcuJob)          | Not converted | YAML `ecu_jobs` section is parsed but not serialized to MDD                                        |
+| Complex types (structs, arrays)  | Not converted | Struct/array DOPs not yet mapped to MDD                                                            |
+| Audience gating                  | Partial       | Audience-based filtering works for DIDs/routines but is not serialized as `Audience` tables in MDD |
 
 These gaps mean the generated MDD is typically **smaller** than the ODX-derived
 reference (fewer metadata tables), but semantically equivalent for diagnostic

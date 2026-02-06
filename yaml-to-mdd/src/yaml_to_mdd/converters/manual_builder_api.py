@@ -723,6 +723,283 @@ def _parent_ref_manual_pack(self, builder: flatbuffers.Builder) -> int:
     return int(ParentRefEnd(builder))
 
 
+def _pack_vector_cached(
+    builder: flatbuffers.Builder,
+    items: list,
+    start_vector_fn,
+) -> int:
+    """Pack a vector of tables, using pack_cached() when available.
+
+    This helper deduplicates shared table instances across the FlatBuffers
+    buffer. If the builder supports pack_cached() (i.e. is a
+    StringInterningBuilder), each element is only serialized once; subsequent
+    references to the same Python object reuse the cached offset.
+
+    Args:
+    ----
+        builder: FlatBuffers builder (may be StringInterningBuilder).
+        items: List of FlatBuffers object-API instances with Pack() methods.
+        start_vector_fn: Module-level StartXxxVector function.
+
+    Returns:
+    -------
+        Offset to the packed vector.
+
+    """
+    use_cache = hasattr(builder, "pack_cached")
+    offsets = []
+    for item in items:
+        if use_cache:
+            offsets.append(builder.pack_cached(item))
+        else:
+            offsets.append(item.Pack(builder))
+    start_vector_fn(builder, len(offsets))
+    for offset in reversed(offsets):
+        builder.PrependUOffsetTRelative(offset)
+    return builder.EndVector()
+
+
+def _diag_layer_manual_pack(self, builder: flatbuffers.Builder) -> int:
+    """Manual Pack for DiagLayerT — uses pack_cached for vector-of-table fields.
+
+    This ensures DiagService instances (and other shared sub-tables like
+    ComParamRef, StateChart, AdditionalAudience) that appear in multiple
+    variant DiagLayers are serialized only once, matching the Kotlin
+    cachedObjects.getOrPut() behavior.
+    """
+    from yaml_to_mdd.fbs_generated.dataformat.DiagLayer import (
+        DiagLayerAddAdditionalAudiences,
+        DiagLayerAddComParamRefs,
+        DiagLayerAddDiagServices,
+        DiagLayerAddFunctClasses,
+        DiagLayerAddLongName,
+        DiagLayerAddSdgs,
+        DiagLayerAddShortName,
+        DiagLayerAddSingleEcuJobs,
+        DiagLayerAddStateCharts,
+        DiagLayerEnd,
+        DiagLayerStart,
+        DiagLayerStartAdditionalAudiencesVector,
+        DiagLayerStartComParamRefsVector,
+        DiagLayerStartDiagServicesVector,
+        DiagLayerStartFunctClassesVector,
+        DiagLayerStartSingleEcuJobsVector,
+        DiagLayerStartStateChartsVector,
+    )
+
+    # Pre-create all nested objects (strings, tables, vectors)
+    shortName = None
+    if self.shortName is not None:
+        shortName = builder.CreateString(self.shortName)
+
+    longName = None
+    if self.longName is not None:
+        longName = self.longName.Pack(builder)
+
+    functClasses = None
+    if self.functClasses is not None and len(self.functClasses) > 0:
+        functClasses = _pack_vector_cached(
+            builder, self.functClasses, DiagLayerStartFunctClassesVector
+        )
+
+    comParamRefs = None
+    if self.comParamRefs is not None and len(self.comParamRefs) > 0:
+        comParamRefs = _pack_vector_cached(
+            builder, self.comParamRefs, DiagLayerStartComParamRefsVector
+        )
+
+    diagServices = None
+    if self.diagServices is not None and len(self.diagServices) > 0:
+        diagServices = _pack_vector_cached(
+            builder, self.diagServices, DiagLayerStartDiagServicesVector
+        )
+
+    singleEcuJobs = None
+    if self.singleEcuJobs is not None and len(self.singleEcuJobs) > 0:
+        singleEcuJobs = _pack_vector_cached(
+            builder, self.singleEcuJobs, DiagLayerStartSingleEcuJobsVector
+        )
+
+    stateCharts = None
+    if self.stateCharts is not None and len(self.stateCharts) > 0:
+        stateCharts = _pack_vector_cached(
+            builder, self.stateCharts, DiagLayerStartStateChartsVector
+        )
+
+    additionalAudiences = None
+    if self.additionalAudiences is not None and len(self.additionalAudiences) > 0:
+        additionalAudiences = _pack_vector_cached(
+            builder,
+            self.additionalAudiences,
+            DiagLayerStartAdditionalAudiencesVector,
+        )
+
+    sdgs = None
+    if self.sdgs is not None:
+        sdgs = self.sdgs.Pack(builder)
+
+    # Build the table
+    DiagLayerStart(builder)
+    if shortName is not None:
+        DiagLayerAddShortName(builder, shortName)
+    if longName is not None:
+        DiagLayerAddLongName(builder, longName)
+    if functClasses is not None:
+        DiagLayerAddFunctClasses(builder, functClasses)
+    if comParamRefs is not None:
+        DiagLayerAddComParamRefs(builder, comParamRefs)
+    if diagServices is not None:
+        DiagLayerAddDiagServices(builder, diagServices)
+    if singleEcuJobs is not None:
+        DiagLayerAddSingleEcuJobs(builder, singleEcuJobs)
+    if stateCharts is not None:
+        DiagLayerAddStateCharts(builder, stateCharts)
+    if additionalAudiences is not None:
+        DiagLayerAddAdditionalAudiences(builder, additionalAudiences)
+    if sdgs is not None:
+        DiagLayerAddSdgs(builder, sdgs)
+    return int(DiagLayerEnd(builder))
+
+
+def _variant_manual_pack(self, builder: flatbuffers.Builder) -> int:
+    """Manual Pack for VariantT — uses pack_cached for sub-tables.
+
+    The diagLayer, variantPattern elements, and parentRefs elements are
+    packed via pack_cached() so that shared instances across variants are
+    serialized only once.
+    """
+    from yaml_to_mdd.fbs_generated.dataformat.Variant import (
+        VariantAddDiagLayer,
+        VariantAddIsBaseVariant,
+        VariantAddParentRefs,
+        VariantAddVariantPattern,
+        VariantEnd,
+        VariantStart,
+        VariantStartParentRefsVector,
+        VariantStartVariantPatternVector,
+    )
+
+    # Pre-create nested objects
+    diagLayer = None
+    if self.diagLayer is not None:
+        if hasattr(builder, "pack_cached"):
+            diagLayer = builder.pack_cached(self.diagLayer)
+        else:
+            diagLayer = self.diagLayer.Pack(builder)
+
+    variantPattern = None
+    if self.variantPattern is not None and len(self.variantPattern) > 0:
+        variantPattern = _pack_vector_cached(
+            builder, self.variantPattern, VariantStartVariantPatternVector
+        )
+
+    parentRefs = None
+    if self.parentRefs is not None and len(self.parentRefs) > 0:
+        parentRefs = _pack_vector_cached(builder, self.parentRefs, VariantStartParentRefsVector)
+
+    # Build the table
+    VariantStart(builder)
+    if diagLayer is not None:
+        VariantAddDiagLayer(builder, diagLayer)
+    if self.isBaseVariant:  # Only add if True (default is False)
+        VariantAddIsBaseVariant(builder, self.isBaseVariant)
+    if variantPattern is not None:
+        VariantAddVariantPattern(builder, variantPattern)
+    if parentRefs is not None:
+        VariantAddParentRefs(builder, parentRefs)
+    return int(VariantEnd(builder))
+
+
+def _ecu_data_manual_pack(self, builder: flatbuffers.Builder) -> int:
+    """Manual Pack for EcuDataT — uses pack_cached for vector-of-table fields.
+
+    Variants, metadata, functionalGroups, and dtcs vectors are packed using
+    pack_cached() for element deduplication.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+
+    from yaml_to_mdd.fbs_generated.dataformat.EcuData import (
+        EcuDataAddDtcs,
+        EcuDataAddEcuName,
+        EcuDataAddFeatureFlags,
+        EcuDataAddFunctionalGroups,
+        EcuDataAddMetadata,
+        EcuDataAddRevision,
+        EcuDataAddVariants,
+        EcuDataAddVersion,
+        EcuDataEnd,
+        EcuDataStart,
+        EcuDataStartDtcsVector,
+        EcuDataStartFeatureFlagsVector,
+        EcuDataStartFunctionalGroupsVector,
+        EcuDataStartMetadataVector,
+        EcuDataStartVariantsVector,
+    )
+
+    # Pre-create strings
+    version = None
+    if self.version is not None:
+        version = builder.CreateString(self.version)
+    ecuName = None
+    if self.ecuName is not None:
+        ecuName = builder.CreateString(self.ecuName)
+    revision = None
+    if self.revision is not None:
+        revision = builder.CreateString(self.revision)
+
+    # Pre-create vectors of tables using pack_cached
+    metadata = None
+    if self.metadata is not None and len(self.metadata) > 0:
+        metadata = _pack_vector_cached(builder, self.metadata, EcuDataStartMetadataVector)
+
+    featureFlags = None
+    if self.featureFlags is not None and len(self.featureFlags) > 0:
+        if np is not None and type(self.featureFlags) is np.ndarray:
+            featureFlags = builder.CreateNumpyVector(self.featureFlags)
+        else:
+            EcuDataStartFeatureFlagsVector(builder, len(self.featureFlags))
+            for i in reversed(range(len(self.featureFlags))):
+                builder.PrependByte(self.featureFlags[i])
+            featureFlags = builder.EndVector()
+
+    variants = None
+    if self.variants is not None and len(self.variants) > 0:
+        variants = _pack_vector_cached(builder, self.variants, EcuDataStartVariantsVector)
+
+    functionalGroups = None
+    if self.functionalGroups is not None and len(self.functionalGroups) > 0:
+        functionalGroups = _pack_vector_cached(
+            builder, self.functionalGroups, EcuDataStartFunctionalGroupsVector
+        )
+
+    dtcs = None
+    if self.dtcs is not None and len(self.dtcs) > 0:
+        dtcs = _pack_vector_cached(builder, self.dtcs, EcuDataStartDtcsVector)
+
+    # Build the table
+    EcuDataStart(builder)
+    if version is not None:
+        EcuDataAddVersion(builder, version)
+    if ecuName is not None:
+        EcuDataAddEcuName(builder, ecuName)
+    if revision is not None:
+        EcuDataAddRevision(builder, revision)
+    if metadata is not None:
+        EcuDataAddMetadata(builder, metadata)
+    if featureFlags is not None:
+        EcuDataAddFeatureFlags(builder, featureFlags)
+    if variants is not None:
+        EcuDataAddVariants(builder, variants)
+    if functionalGroups is not None:
+        EcuDataAddFunctionalGroups(builder, functionalGroups)
+    if dtcs is not None:
+        EcuDataAddDtcs(builder, dtcs)
+    return int(EcuDataEnd(builder))
+
+
 def apply_manual_builder_patches() -> None:
     """Apply Manual Builder API patches to Object API Pack methods.
 
@@ -739,8 +1016,10 @@ def apply_manual_builder_patches() -> None:
     from yaml_to_mdd.fbs_generated.dataformat.ComParamRef import ComParamRefT
     from yaml_to_mdd.fbs_generated.dataformat.DiagCodedType import DiagCodedTypeT
     from yaml_to_mdd.fbs_generated.dataformat.DiagComm import DiagCommT
+    from yaml_to_mdd.fbs_generated.dataformat.DiagLayer import DiagLayerT
     from yaml_to_mdd.fbs_generated.dataformat.DiagService import DiagServiceT
     from yaml_to_mdd.fbs_generated.dataformat.DOP import DOPT
+    from yaml_to_mdd.fbs_generated.dataformat.EcuData import EcuDataT
     from yaml_to_mdd.fbs_generated.dataformat.MatchingRequestParam import (
         MatchingRequestParamT,
     )
@@ -752,6 +1031,7 @@ def apply_manual_builder_patches() -> None:
     from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import (
         StandardLengthTypeT,
     )
+    from yaml_to_mdd.fbs_generated.dataformat.Variant import VariantT
 
     # Patch all the Pack methods
     ParamT.Pack = _param_manual_pack  # type: ignore[method-assign]
@@ -767,5 +1047,11 @@ def apply_manual_builder_patches() -> None:
     MatchingRequestParamT.Pack = _matching_request_param_manual_pack  # type: ignore[method-assign]
     ComParamRefT.Pack = _com_param_ref_manual_pack  # type: ignore[method-assign]
     ParentRefT.Pack = _parent_ref_manual_pack  # type: ignore[method-assign]
+
+    # Object sharing patches: use pack_cached() for vector-of-tables
+    # to deduplicate shared instances across variants
+    DiagLayerT.Pack = _diag_layer_manual_pack  # type: ignore[method-assign]
+    VariantT.Pack = _variant_manual_pack  # type: ignore[method-assign]
+    EcuDataT.Pack = _ecu_data_manual_pack  # type: ignore[method-assign]
 
     _patches_applied = True

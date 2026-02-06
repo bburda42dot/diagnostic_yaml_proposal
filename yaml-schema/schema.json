@@ -2409,7 +2409,10 @@
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["download", "upload"],
+                    "enum": [
+                        "download",
+                        "upload"
+                    ],
                     "default": "download",
                     "description": "Transfer direction"
                 },
@@ -2423,7 +2426,12 @@
                 },
                 "format": {
                     "type": "string",
-                    "enum": ["raw", "encrypted", "compressed", "encrypted_compressed"],
+                    "enum": [
+                        "raw",
+                        "encrypted",
+                        "compressed",
+                        "encrypted_compressed"
+                    ],
                     "default": "raw",
                     "description": "Data format/compression"
                 },
