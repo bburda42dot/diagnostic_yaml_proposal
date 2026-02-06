@@ -77,6 +77,9 @@
         "ecu_jobs": {
             "$ref": "#/$defs/ecu_jobs"
         },
+        "memory": {
+            "$ref": "#/$defs/memory_config"
+        },
         "x-oem": {
             "type": "object"
         }
@@ -2328,6 +2331,7 @@
         },
         "memory_region": {
             "type": "object",
+            "description": "Definition of a memory region in the ECU.",
             "additionalProperties": false,
             "required": [
                 "name",
@@ -2361,6 +2365,107 @@
                 },
                 "access": {
                     "type": "string"
+                }
+            }
+        },
+        "address_format": {
+            "type": "object",
+            "description": "Address and length format for memory operations (ISO 14229 addressAndLengthFormatIdentifier).",
+            "additionalProperties": false,
+            "properties": {
+                "address_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 4,
+                    "description": "Number of bytes for memory address (1-5)"
+                },
+                "length_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 4,
+                    "description": "Number of bytes for memory length (1-5)"
+                }
+            }
+        },
+        "data_block": {
+            "type": "object",
+            "description": "Definition of a data block for transfer operations (RequestDownload 0x34 / RequestUpload 0x35).",
+            "additionalProperties": false,
+            "required": [
+                "name",
+                "memory_address",
+                "memory_size"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable name for the data block"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Block purpose description"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["download", "upload"],
+                    "default": "download",
+                    "description": "Transfer direction"
+                },
+                "memory_address": {
+                    "$ref": "#/$defs/hex32",
+                    "description": "Target memory address"
+                },
+                "memory_size": {
+                    "$ref": "#/$defs/hex32",
+                    "description": "Size of the data block in bytes"
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["raw", "encrypted", "compressed", "encrypted_compressed"],
+                    "default": "raw",
+                    "description": "Data format/compression"
+                },
+                "max_block_length": {
+                    "$ref": "#/$defs/hex32",
+                    "description": "Max bytes per TransferData call"
+                },
+                "security_level": {
+                    "type": "string",
+                    "description": "Required security level"
+                },
+                "session": {
+                    "type": "string",
+                    "description": "Required diagnostic session"
+                },
+                "checksum_type": {
+                    "type": "string",
+                    "description": "Checksum algorithm"
+                }
+            }
+        },
+        "memory_config": {
+            "type": "object",
+            "description": "Memory configuration for the ECU, including regions and data blocks.",
+            "additionalProperties": false,
+            "properties": {
+                "default_address_format": {
+                    "$ref": "#/$defs/address_format"
+                },
+                "regions": {
+                    "type": "object",
+                    "description": "Named memory regions",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/memory_region"
+                    }
+                },
+                "data_blocks": {
+                    "type": "object",
+                    "description": "Named data blocks for transfer operations",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/data_block"
+                    }
                 }
             }
         },
