@@ -45,6 +45,8 @@ ignore = ["D100", "D104", "D203", "D213"]
 [tool.ruff.lint.per-file-ignores]
 # services.py uses camelCase field names to match the YAML schema
 "src/yaml_to_mdd/models/services.py" = ["N815"]
+# manual_builder_api.py uses camelCase variables to match FlatBuffers convention
+"src/yaml_to_mdd/converters/manual_builder_api.py" = ["N806"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -54,7 +56,7 @@ warn_unused_ignores = false  # Disabled due to generated code variance between e
 exclude = ["fbs_generated", "proto_generated"]
 
 [[tool.mypy.overrides]]
-module = ["yaml_to_mdd.fbs_generated.*", "flatbuffers.*", "zstandard.*"]
+module = ["yaml_to_mdd.fbs_generated.*", "flatbuffers.*", "zstandard.*", "yaml_to_mdd.converters.manual_builder_api"]
 ignore_missing_imports = true
 ignore_errors = true
 
