@@ -76,9 +76,7 @@ from yaml_to_mdd.fbs_generated.dataformat.RegularComParam import RegularComParam
 from yaml_to_mdd.fbs_generated.dataformat.Request import RequestT
 from yaml_to_mdd.fbs_generated.dataformat.Response import ResponseT
 from yaml_to_mdd.fbs_generated.dataformat.SimpleValue import SimpleValueT
-from yaml_to_mdd.fbs_generated.dataformat.SpecificDataType import SpecificDataType
 from yaml_to_mdd.fbs_generated.dataformat.SpecificDOPData import SpecificDOPData
-from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import StandardLengthTypeT
 from yaml_to_mdd.fbs_generated.dataformat.State import StateT
 from yaml_to_mdd.fbs_generated.dataformat.StateChart import StateChartT
 from yaml_to_mdd.fbs_generated.dataformat.StateTransition import StateTransitionT
@@ -136,6 +134,7 @@ class StringInterningBuilder(flatbuffers.Builder):
         super().__init__(initial_size)
         self._string_cache: dict[str, int] = {}
         self._dop_offset_cache: dict[int, int] = {}  # id(DOPT) -> offset
+        self._object_cache: dict[int, int] = {}  # id(obj) -> packed offset
 
     def CreateString(  # noqa: N802 - Matching FlatBuffers API
         self, s: str | bytes, encoding: str = "utf-8", errors: str = "strict"
@@ -202,6 +201,36 @@ class StringInterningBuilder(flatbuffers.Builder):
     def dops_cached(self) -> int:
         """Return number of unique DOPs cached."""
         return len(self._dop_offset_cache)
+
+    def pack_cached(self, obj: Any) -> int:
+        """Pack an object, returning cached offset if already packed.
+
+        This mirrors the Kotlin odx-converter's cachedObjects.getOrPut() pattern.
+        If the same Python object (by identity) has been packed before, the
+        previously computed FlatBuffers offset is returned, achieving object
+        sharing in the binary output.
+
+        Args:
+        ----
+            obj: A FlatBuffers object API instance with a Pack() method.
+
+        Returns:
+        -------
+            Offset to the serialized table in the buffer.
+
+        """
+        obj_id = id(obj)
+        cached = self._object_cache.get(obj_id)
+        if cached is not None:
+            return cached
+        offset = obj.Pack(self)
+        self._object_cache[obj_id] = offset
+        return offset
+
+    @property
+    def objects_cached(self) -> int:
+        """Return number of unique objects cached."""
+        return len(self._object_cache)
 
 
 # Union type tags for SimpleOrComplexValueEntry (CDA FlatBuffers schema)
@@ -281,18 +310,14 @@ class CDAComplexValueT:
         entries_type_offset = builder.EndVector()
 
         # Step 3: Create entries vector (offsets to tables)
-        builder.StartVector(
-            4, len(self._entries), 4
-        )  # elemSize=4 (offset), alignment=4
+        builder.StartVector(4, len(self._entries), 4)  # elemSize=4 (offset), alignment=4
         for offset in reversed(entry_offsets):
             builder.PrependUOffsetTRelative(offset)
         entries_offset = builder.EndVector()
 
         # Step 4: Create ComplexValue table with both vectors
         builder.StartObject(2)  # 2 fields: entries_type, entries
-        builder.PrependUOffsetTRelativeSlot(
-            0, entries_type_offset, 0
-        )  # slot 0 = entries_type
+        builder.PrependUOffsetTRelativeSlot(0, entries_type_offset, 0)  # slot 0 = entries_type
         builder.PrependUOffsetTRelativeSlot(1, entries_offset, 0)  # slot 1 = entries
         return int(builder.EndObject())
 
@@ -438,6 +463,12 @@ def _patch_valuet_pack() -> None:
 _patch_complexvalue_pack()
 _patch_valuet_pack()
 
+# Apply Manual Builder API patches to skip default values in serialization
+# This is critical for byte parity with ODX-generated MDDs
+from yaml_to_mdd.converters.manual_builder_api import apply_manual_builder_patches
+
+apply_manual_builder_patches()
+
 
 @dataclass
 class DoIPAddressingConfig:
@@ -503,9 +534,65 @@ class IRToFlatBuffersConverter:
         self._builder_size = builder_size
         self._dop_cache: dict[str, DOPT] = {}  # DOP name -> converted DOP
         self._protocol_cache: dict[str, ProtocolT] = {}  # Protocol name -> Protocol
-        self._all_services_cache: list[DiagServiceT] = (
-            []
-        )  # All services including variant-specific
+        self._all_services_cache: list[DiagServiceT] = []  # All services including variant-specific
+        # Cache for structurally identical DiagCodedType instances.
+        # Key: (base_data_type, type_enum, bit_length, is_hlbo) -> DiagCodedTypeT
+        # Matching Kotlin's cachedObjects.getOrPut(DIAGCODEDTYPE) pattern.
+        self._diag_coded_type_cache: dict[tuple[int, int, int, bool], DiagCodedTypeT] = {}
+
+    def _get_cached_diag_coded_type(
+        self,
+        base_data_type: int,
+        type_enum: int,
+        bit_length: int,
+        is_hlbo: bool,
+    ) -> DiagCodedTypeT:
+        """Get or create a cached DiagCodedType instance.
+
+        Mirrors Kotlin's cachedObjects.getOrPut(DIAGCODEDTYPE) pattern.
+        When multiple params/DOPs share the same DiagCodedType structure,
+        the same Python object is returned so that pack_cached() produces
+        a single FlatBuffers offset for all references.
+
+        Args:
+        ----
+            base_data_type: FlatBuffers DataType enum value.
+            type_enum: FlatBuffers SpecificDataType or DiagCodedTypeName enum value.
+            bit_length: Bit length for StandardLengthType.
+            is_hlbo: High-low byte order flag.
+
+        Returns:
+        -------
+            Cached DiagCodedTypeT instance.
+
+        """
+        from yaml_to_mdd.fbs_generated.dataformat.DiagCodedTypeName import (
+            DiagCodedTypeName,
+        )
+        from yaml_to_mdd.fbs_generated.dataformat.SpecificDataType import (
+            SpecificDataType,
+        )
+        from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import (
+            StandardLengthTypeT,
+        )
+
+        key = (base_data_type, type_enum, bit_length, is_hlbo)
+        cached = self._diag_coded_type_cache.get(key)
+        if cached is not None:
+            return cached
+
+        std_len = StandardLengthTypeT()
+        std_len.bitLength = bit_length
+
+        dct = DiagCodedTypeT()
+        dct.type = DiagCodedTypeName.STANDARD_LENGTH_TYPE
+        dct.baseDataType = base_data_type
+        dct.isHighLowByteOrder = is_hlbo
+        dct.specificDataType = SpecificDataType.StandardLengthType
+        dct.specificData = std_len
+
+        self._diag_coded_type_cache[key] = dct
+        return dct
 
     def convert(
         self,
@@ -534,6 +621,7 @@ class IRToFlatBuffersConverter:
         # Reset state for fresh conversion
         self._dop_cache.clear()
         self._protocol_cache.clear()
+        self._diag_coded_type_cache.clear()
 
         # Default to DoIP protocol if none specified
         if protocols is None:
@@ -596,9 +684,7 @@ class IRToFlatBuffersConverter:
         for cda_name, protocol in self._protocol_cache.items():
             # Create ComParamRefs for DoIP addressing parameters
             if "DoIP" in cda_name:
-                com_param_refs.extend(
-                    self._create_doip_com_param_refs(protocol, doip_addressing)
-                )
+                com_param_refs.extend(self._create_doip_com_param_refs(protocol, doip_addressing))
             else:
                 # For non-DoIP protocols, just add protocol reference
                 com_param_ref = ComParamRefT()
@@ -630,9 +716,7 @@ class IRToFlatBuffersConverter:
 
         return bytes(builder.Output())
 
-    def _create_variants(
-        self, db: IRDatabase, base_diag_layer: DiagLayerT
-    ) -> list[VariantT]:
+    def _create_variants(self, db: IRDatabase, base_diag_layer: DiagLayerT) -> list[VariantT]:
         """Create Variant tables from IR variants.
 
         Args:
@@ -677,9 +761,7 @@ class IRToFlatBuffersConverter:
                         svc_name = svc.diagComm.shortName if svc.diagComm else ""
                         if svc_name in ir_variant.service_refs:
                             variant_services.append(svc)
-                    variant_layer.diagServices = (
-                        variant_services if variant_services else None
-                    )
+                    variant_layer.diagServices = variant_services if variant_services else None
                 else:
                     # No variant-specific services - inherit all from parent
                     variant_layer.diagServices = None
@@ -739,8 +821,7 @@ class IRToFlatBuffersConverter:
                     (
                         v
                         for v in variants
-                        if v.diagLayer
-                        and v.diagLayer.shortName == ir_variant.parent_ref
+                        if v.diagLayer and v.diagLayer.shortName == ir_variant.parent_ref
                     ),
                     None,
                 )
@@ -1224,9 +1305,7 @@ class IRToFlatBuffersConverter:
 
         # Convert diagnostic coded type
         if ir_dop.diag_coded_type:
-            normal_dop.diagCodedType = self._convert_diag_coded_type(
-                ir_dop.diag_coded_type
-            )
+            normal_dop.diagCodedType = self._convert_diag_coded_type(ir_dop.diag_coded_type)
 
         # Convert computation method
         if ir_dop.compu_method:
@@ -1241,44 +1320,34 @@ class IRToFlatBuffersConverter:
     def _convert_diag_coded_type(self, ir_dct: IRDiagCodedType) -> DiagCodedTypeT:
         """Convert IR DiagCodedType to FlatBuffers DiagCodedType.
 
+        Uses caching to share identical DiagCodedType instances, matching
+        the Kotlin odx-converter cachedObjects pattern.
+
         Args:
         ----
             ir_dct: The IR diagnostic coded type.
 
         Returns:
         -------
-            FlatBuffers DiagCodedTypeT instance.
+            FlatBuffers DiagCodedTypeT instance (may be shared/cached).
 
         """
         from yaml_to_mdd.fbs_generated.dataformat.DataType import DataType
         from yaml_to_mdd.fbs_generated.dataformat.DiagCodedTypeName import (
             DiagCodedTypeName,
         )
-        from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import (
-            StandardLengthTypeT,
-        )
         from yaml_to_mdd.ir.types import IRDataType, IRDiagCodedTypeName
-
-        dct = DiagCodedTypeT()
 
         # Map type name
         type_name_map = {
             IRDiagCodedTypeName.LEADING_LENGTH_INFO_TYPE: (
                 DiagCodedTypeName.LEADING_LENGTH_INFO_TYPE
             ),
-            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (
-                DiagCodedTypeName.MIN_MAX_LENGTH_TYPE
-            ),
-            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (
-                DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE
-            ),
-            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (
-                DiagCodedTypeName.STANDARD_LENGTH_TYPE
-            ),
+            IRDiagCodedTypeName.MIN_MAX_LENGTH_TYPE: (DiagCodedTypeName.MIN_MAX_LENGTH_TYPE),
+            IRDiagCodedTypeName.PARAM_LENGTH_INFO_TYPE: (DiagCodedTypeName.PARAM_LENGTH_INFO_TYPE),
+            IRDiagCodedTypeName.STANDARD_LENGTH_TYPE: (DiagCodedTypeName.STANDARD_LENGTH_TYPE),
         }
-        dct.type = type_name_map.get(
-            ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE
-        )
+        type_enum = type_name_map.get(ir_dct.type_name, DiagCodedTypeName.STANDARD_LENGTH_TYPE)
 
         # Map base data type
         data_type_map = {
@@ -1291,17 +1360,25 @@ class IRToFlatBuffersConverter:
             IRDataType.A_BYTEFIELD: DataType.A_BYTEFIELD,
             IRDataType.A_FLOAT_64: DataType.A_FLOAT_64,
         }
-        dct.baseDataType = data_type_map.get(
-            ir_dct.base_data_type, DataType.A_BYTEFIELD
-        )
+        base_data_type = data_type_map.get(ir_dct.base_data_type, DataType.A_BYTEFIELD)
 
-        dct.isHighLowByteOrder = ir_dct.is_high_low_byte_order
+        is_hlbo = ir_dct.is_high_low_byte_order
+        bit_length = ir_dct.bit_length
 
-        # Create specific data (StandardLengthType for most cases)
+        # Use cache for StandardLengthType DiagCodedTypes
         if ir_dct.type_name == IRDiagCodedTypeName.STANDARD_LENGTH_TYPE:
-            std_type = StandardLengthTypeT()
-            std_type.bitLength = ir_dct.bit_length
-            dct.specificData = std_type
+            return self._get_cached_diag_coded_type(
+                base_data_type,
+                type_enum,
+                bit_length,
+                is_hlbo,
+            )
+
+        # Non-StandardLengthType: create without caching
+        dct = DiagCodedTypeT()
+        dct.type = type_enum
+        dct.baseDataType = base_data_type
+        dct.isHighLowByteOrder = is_hlbo
 
         return dct
 
@@ -1410,24 +1487,18 @@ class IRToFlatBuffersConverter:
 
         # Convert request (pass service_id for CodedConst generation)
         if ir_service.request:
-            service.request = self._convert_request(
-                ir_service.request, ir_service.service_id
-            )
+            service.request = self._convert_request(ir_service.request, ir_service.service_id)
 
         # Convert positive response(s)
         if ir_service.positive_response:
             service.posResponses = [
-                self._convert_response(
-                    ir_service.positive_response, ir_service.service_id
-                )
+                self._convert_response(ir_service.positive_response, ir_service.service_id)
             ]
 
         # Convert negative response(s)
         if ir_service.negative_response:
             service.negResponses = [
-                self._convert_response(
-                    ir_service.negative_response, ir_service.service_id
-                )
+                self._convert_response(ir_service.negative_response, ir_service.service_id)
             ]
 
         return service
@@ -1449,20 +1520,17 @@ class IRToFlatBuffersConverter:
         """
         param = ParamT()
         param.shortName = "ServiceID"
-        param.bytePosition = 0
-        param.bitPosition = 0
+        param.bytePosition = None
+        param.bitPosition = None
         param.semantic = "SERVICE_ID"
 
-        # Create StandardLengthType (8 bits = 1 byte)
-        std_len = StandardLengthTypeT()
-        std_len.bitLength = 8
-        std_len.condensed = False
-
-        # Create DiagCodedType
-        diag_coded_type = DiagCodedTypeT()
-        diag_coded_type.baseDataType = DataType.A_UINT_32
-        diag_coded_type.specificDataType = SpecificDataType.StandardLengthType
-        diag_coded_type.specificData = std_len
+        # Reuse cached DiagCodedType (same type used by all ServiceID params)
+        diag_coded_type = self._get_cached_diag_coded_type(
+            DataType.A_UINT_32,
+            0,
+            8,
+            True,
+        )
 
         # Create CodedConst with the service ID value
         coded_const = CodedConstT()
@@ -1639,13 +1707,13 @@ class IRToFlatBuffersConverter:
             FlatBuffers CodedConstT instance.
 
         """
-        std_len = StandardLengthTypeT()
-        std_len.bitLength = ir_param.bit_length
-
-        diag_coded_type = DiagCodedTypeT()
-        diag_coded_type.baseDataType = DataType.A_UINT_32
-        diag_coded_type.specificDataType = SpecificDataType.StandardLengthType
-        diag_coded_type.specificData = std_len
+        # Reuse cached DiagCodedType for identical (baseDataType, type, bitLength, hlbo)
+        diag_coded_type = self._get_cached_diag_coded_type(
+            DataType.A_UINT_32,
+            0,
+            ir_param.bit_length,
+            True,
+        )
 
         coded_const = CodedConstT()
         coded_const.codedValue = (
@@ -1669,8 +1737,6 @@ class IRToFlatBuffersConverter:
         """
         matching_param = MatchingRequestParamT()
         matching_param.requestBytePos = ir_param.matching_request_byte_pos or 0
-        matching_param.byteLength = (
-            ir_param.matching_byte_length or ir_param.bit_length // 8
-        )
+        matching_param.byteLength = ir_param.matching_byte_length or ir_param.bit_length // 8
 
         return matching_param

@@ -92,7 +92,7 @@ class TestIRParam:
     def test_param_default_values(self) -> None:
         """Should have correct default values."""
         param = IRParam(short_name="Test")
-        assert param.byte_position == 0
+        assert param.byte_position is None  # Changed from 0 to None for byte parity
         assert param.bit_position is None
         assert param.dop_ref is None
 

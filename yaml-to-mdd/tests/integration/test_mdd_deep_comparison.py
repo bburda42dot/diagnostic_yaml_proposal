@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from yaml_to_mdd.converters.mdd_writer import FILE_MAGIC, convert_yaml_to_mdd
 from yaml_to_mdd.fbs_generated.dataformat.EcuData import EcuData
 from yaml_to_mdd.fbs_generated.dataformat.ParamSpecificData import ParamSpecificData
@@ -185,9 +184,7 @@ def parse_mdd_deep(mdd_path: Path) -> DeepMDDStructure:
                     if mp:
                         mp_info: dict[str, Any] = {
                             "expected_value": (
-                                mp.ExpectedValue().decode()
-                                if mp.ExpectedValue()
-                                else None
+                                mp.ExpectedValue().decode() if mp.ExpectedValue() else None
                             ),
                             "has_diag_service": mp.DiagService() is not None,
                             "has_out_param": mp.OutParam() is not None,
@@ -195,9 +192,7 @@ def parse_mdd_deep(mdd_path: Path) -> DeepMDDStructure:
                         if mp.DiagService():
                             dc = mp.DiagService().DiagComm()
                             mp_info["diag_service_name"] = (
-                                dc.ShortName().decode()
-                                if dc and dc.ShortName()
-                                else None
+                                dc.ShortName().decode() if dc and dc.ShortName() else None
                             )
                         if mp.OutParam():
                             out_param = mp.OutParam()
@@ -227,12 +222,6 @@ def parse_mdd_deep(mdd_path: Path) -> DeepMDDStructure:
 
 def _extract_services_deep(diag_layer: Any, structure: DeepMDDStructure) -> None:
     """Extract detailed service information."""
-    from yaml_to_mdd.fbs_generated.dataformat.CodedConst import CodedConst
-    from yaml_to_mdd.fbs_generated.dataformat.StandardLengthType import (
-        StandardLengthType,
-    )
-    from yaml_to_mdd.fbs_generated.dataformat.Value import Value
-
     for i in range(diag_layer.DiagServicesLength()):
         service = diag_layer.DiagServices(i)
         if service is None:
@@ -331,12 +320,14 @@ class TestTestcontainerMDDComparison:
         return path
 
     @pytest.fixture
-    def flxc1000_yaml_mdd(self) -> Path:
-        """FLXC1000 YAML-generated MDD."""
-        path = self.TESTCONTAINER_DIR / "yaml" / "FLXC1000_yaml.mdd"
-        if not path.exists():
-            pytest.skip(f"YAML MDD not found: {path}")
-        return path
+    def flxc1000_yaml_mdd(self, tmp_path: Path) -> Path:
+        """FLXC1000 YAML-generated MDD (converted from YAML source at test time)."""
+        yaml_source = self.TESTCONTAINER_DIR / "yaml" / "FLXC1000_yaml.yaml"
+        if not yaml_source.exists():
+            pytest.skip(f"YAML source not found: {yaml_source}")
+        output = tmp_path / "FLXC1000_yaml.mdd"
+        convert_yaml_to_mdd(yaml_source, output)
+        return output
 
     @pytest.fixture
     def odx_structure(self, flxc1000_odx_mdd: Path) -> DeepMDDStructure:
@@ -356,7 +347,7 @@ class TestTestcontainerMDDComparison:
         yaml_size = flxc1000_yaml_mdd.stat().st_size
         diff = abs(odx_size - yaml_size)
 
-        print(f"\n=== TESTCONTAINER FILE SIZE COMPARISON ===")
+        print("\n=== TESTCONTAINER FILE SIZE COMPARISON ===")
         print(f"ODX MDD:  {odx_size} bytes")
         print(f"YAML MDD: {yaml_size} bytes")
         print(f"Difference: {diff} bytes ({diff * 100 / odx_size:.2f}%)")
@@ -367,7 +358,7 @@ class TestTestcontainerMDDComparison:
         """Compare decompressed FlatBuffers sizes."""
         diff = abs(odx_structure.decompressed_size - yaml_structure.decompressed_size)
 
-        print(f"\n=== DECOMPRESSED SIZE COMPARISON ===")
+        print("\n=== DECOMPRESSED SIZE COMPARISON ===")
         print(f"ODX:  {odx_structure.decompressed_size} bytes")
         print(f"YAML: {yaml_structure.decompressed_size} bytes")
         print(f"Difference: {diff} bytes")
@@ -376,7 +367,7 @@ class TestTestcontainerMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare variant details from testcontainer MDDs."""
-        print(f"\n=== VARIANT DETAILS (TESTCONTAINER) ===")
+        print("\n=== VARIANT DETAILS (TESTCONTAINER) ===")
         print(
             f"{'Source':<6} {'Name':<30} {'Base':<6} {'Svcs':<6} {'Charts':<8} {'ComParams':<10} {'Parents':<8} {'Patterns':<10}"
         )
@@ -405,7 +396,7 @@ class TestTestcontainerMDDComparison:
         odx_services = set(odx_structure.services.keys())
         yaml_services = set(yaml_structure.services.keys())
 
-        print(f"\n=== SERVICE COUNT (TESTCONTAINER) ===")
+        print("\n=== SERVICE COUNT (TESTCONTAINER) ===")
         print(f"ODX services:  {len(odx_services)}")
         print(f"YAML services: {len(yaml_services)}")
 
@@ -423,11 +414,9 @@ class TestTestcontainerMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare service request parameters from testcontainer MDDs."""
-        print(f"\n=== SERVICE REQUEST PARAMETERS (TESTCONTAINER) ===")
+        print("\n=== SERVICE REQUEST PARAMETERS (TESTCONTAINER) ===")
 
-        common_services = set(odx_structure.services.keys()) & set(
-            yaml_structure.services.keys()
-        )
+        common_services = set(odx_structure.services.keys()) & set(yaml_structure.services.keys())
 
         for svc_name in sorted(common_services)[:8]:
             odx_svc = odx_structure.services[svc_name]
@@ -439,16 +428,8 @@ class TestTestcontainerMDDComparison:
 
             max_params = max(len(odx_svc.request_params), len(yaml_svc.request_params))
             for i in range(max_params):
-                odx_p = (
-                    odx_svc.request_params[i]
-                    if i < len(odx_svc.request_params)
-                    else None
-                )
-                yaml_p = (
-                    yaml_svc.request_params[i]
-                    if i < len(yaml_svc.request_params)
-                    else None
-                )
+                odx_p = odx_svc.request_params[i] if i < len(odx_svc.request_params) else None
+                yaml_p = yaml_svc.request_params[i] if i < len(yaml_svc.request_params) else None
 
                 if odx_p and yaml_p:
                     # Check if they differ
@@ -478,7 +459,7 @@ class TestTestcontainerMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare matching parameters from testcontainer MDDs."""
-        print(f"\n=== MATCHING PARAMETERS (TESTCONTAINER) ===")
+        print("\n=== MATCHING PARAMETERS (TESTCONTAINER) ===")
 
         def show_matching_params(structure: DeepMDDStructure, label: str) -> None:
             for v in structure.variants:
@@ -497,7 +478,7 @@ class TestTestcontainerMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare compression settings from testcontainer MDDs."""
-        print(f"\n=== COMPRESSION (TESTCONTAINER) ===")
+        print("\n=== COMPRESSION (TESTCONTAINER) ===")
         print(f"ODX compression:  {odx_structure.chunk_compression}")
         print(f"YAML compression: {yaml_structure.chunk_compression}")
         print(f"ODX compressed size:   {odx_structure.chunk_data_size}")
@@ -545,7 +526,7 @@ class TestDeepMDDComparison:
     ) -> None:
         """Compare file sizes."""
         diff = abs(odx_structure.file_size - yaml_structure.file_size)
-        print(f"\n=== FILE SIZE COMPARISON ===")
+        print("\n=== FILE SIZE COMPARISON ===")
         print(f"ODX MDD:  {odx_structure.file_size} bytes")
         print(f"YAML MDD: {yaml_structure.file_size} bytes")
         print(f"Difference: {diff} bytes")
@@ -555,7 +536,7 @@ class TestDeepMDDComparison:
     ) -> None:
         """Compare decompressed FlatBuffers sizes."""
         diff = abs(odx_structure.decompressed_size - yaml_structure.decompressed_size)
-        print(f"\n=== DECOMPRESSED SIZE COMPARISON ===")
+        print("\n=== DECOMPRESSED SIZE COMPARISON ===")
         print(f"ODX:  {odx_structure.decompressed_size} bytes")
         print(f"YAML: {yaml_structure.decompressed_size} bytes")
         print(f"Difference: {diff} bytes")
@@ -564,7 +545,7 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare ECU metadata."""
-        print(f"\n=== ECU METADATA ===")
+        print("\n=== ECU METADATA ===")
         print(f"ODX ECU name:  '{odx_structure.ecu_name}'")
         print(f"YAML ECU name: '{yaml_structure.ecu_name}'")
         print(f"ODX revision:  '{odx_structure.revision}'")
@@ -574,7 +555,7 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare variant counts."""
-        print(f"\n=== VARIANT COUNT ===")
+        print("\n=== VARIANT COUNT ===")
         print(f"ODX variants:  {odx_structure.variants_count}")
         print(f"YAML variants: {yaml_structure.variants_count}")
         assert odx_structure.variants_count == yaml_structure.variants_count, (
@@ -586,7 +567,7 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare variant details."""
-        print(f"\n=== VARIANT DETAILS ===")
+        print("\n=== VARIANT DETAILS ===")
         print(
             f"{'Name':<30} {'Base':<6} {'Svcs':<6} {'Charts':<8} {'ComParams':<10} {'Parents':<8} {'Patterns':<10}"
         )
@@ -612,7 +593,7 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare matching parameters in variant patterns."""
-        print(f"\n=== MATCHING PARAMETERS ===")
+        print("\n=== MATCHING PARAMETERS ===")
 
         for v in odx_structure.variants:
             if v.matching_params:
@@ -639,7 +620,7 @@ class TestDeepMDDComparison:
         odx_services = set(odx_structure.services.keys())
         yaml_services = set(yaml_structure.services.keys())
 
-        print(f"\n=== SERVICE NAMES ===")
+        print("\n=== SERVICE NAMES ===")
         print(f"ODX services:  {len(odx_services)}")
         print(f"YAML services: {len(yaml_services)}")
 
@@ -655,12 +636,10 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare service request parameters in detail."""
-        print(f"\n=== SERVICE REQUEST PARAMETERS ===")
+        print("\n=== SERVICE REQUEST PARAMETERS ===")
 
         # Find common services
-        common_services = set(odx_structure.services.keys()) & set(
-            yaml_structure.services.keys()
-        )
+        common_services = set(odx_structure.services.keys()) & set(yaml_structure.services.keys())
 
         for svc_name in sorted(common_services)[:5]:  # Limit to first 5 for readability
             odx_svc = odx_structure.services[svc_name]
@@ -673,16 +652,8 @@ class TestDeepMDDComparison:
             # Compare params
             max_params = max(len(odx_svc.request_params), len(yaml_svc.request_params))
             for i in range(max_params):
-                odx_p = (
-                    odx_svc.request_params[i]
-                    if i < len(odx_svc.request_params)
-                    else None
-                )
-                yaml_p = (
-                    yaml_svc.request_params[i]
-                    if i < len(yaml_svc.request_params)
-                    else None
-                )
+                odx_p = odx_svc.request_params[i] if i < len(odx_svc.request_params) else None
+                yaml_p = yaml_svc.request_params[i] if i < len(yaml_svc.request_params) else None
 
                 print(f"\n  Param [{i}]:")
                 if odx_p:
@@ -708,7 +679,7 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare EcuSharedData presence."""
-        print(f"\n=== ECU SHARED DATA ===")
+        print("\n=== ECU SHARED DATA ===")
         print(f"ODX has EcuSharedData:  {odx_structure.has_ecu_shared_data}")
         print(f"YAML has EcuSharedData: {yaml_structure.has_ecu_shared_data}")
         print(f"ODX DOPs count:  {odx_structure.shared_data_dops_count}")
@@ -718,15 +689,13 @@ class TestDeepMDDComparison:
         self, odx_structure: DeepMDDStructure, yaml_structure: DeepMDDStructure
     ) -> None:
         """Compare compression settings."""
-        print(f"\n=== COMPRESSION INFO ===")
+        print("\n=== COMPRESSION INFO ===")
         print(f"ODX compression:  {odx_structure.chunk_compression}")
         print(f"YAML compression: {yaml_structure.chunk_compression}")
         print(f"ODX compressed size:   {odx_structure.chunk_data_size}")
         print(f"YAML compressed size:  {yaml_structure.chunk_data_size}")
 
-    def test_object_count_parity(
-        self, flxc1000_odx_mdd: Path, flxc1000_yaml_mdd: Path
-    ) -> None:
+    def test_object_count_parity(self, flxc1000_odx_mdd: Path, flxc1000_yaml_mdd: Path) -> None:
         """Verify object counts match between reference and generated MDD.
 
         Object count parity ensures we generate the same number of FlatBuffers
@@ -813,6 +782,49 @@ class TestDeepMDDComparison:
                 f"reference={ref_counts[key]}, generated={gen_counts[key]}"
             )
 
+    def test_byte_parity(self, flxc1000_odx_mdd: Path, flxc1000_yaml_mdd: Path) -> None:
+        """Verify generated MDD size is within acceptable threshold of reference.
+
+        Exact byte parity is not achievable because the reference is generated
+        from ODX (Kotlin FlatBuffers) while we generate from YAML (Python FlatBuffers).
+        Key differences:
+        - ODX source has extra metadata fields (longName, functClass, stateTransitionRefs)
+          that are absent in the YAML schema
+        - Python and Kotlin FlatBuffers libraries differ in vtable deduplication
+          and alignment strategies
+        - MDD protobuf headers contain different metadata (version, schema info)
+
+        However, FlatBuffers object sharing (DiagCodedType, Protocol, DOP) now matches
+        the reference implementation exactly, so the size should be close.
+        """
+        # Maximum allowed size overhead as a fraction (e.g. 0.15 = 15%)
+        MAX_SIZE_OVERHEAD = 0.15
+
+        ref_bytes = flxc1000_odx_mdd.read_bytes()
+        gen_bytes = flxc1000_yaml_mdd.read_bytes()
+
+        ref_size = len(ref_bytes)
+        gen_size = len(gen_bytes)
+        overhead = (gen_size - ref_size) / ref_size if ref_size > 0 else 0
+
+        print("\n=== SIZE PARITY TEST ===")
+        print(f"Reference size: {ref_size} bytes")
+        print(f"Generated size: {gen_size} bytes")
+        print(f"Overhead:       {overhead:+.1%}")
+        print(f"Threshold:      {MAX_SIZE_OVERHEAD:.0%}")
+
+        if ref_bytes == gen_bytes:
+            print("Result: ✓ BYTE-IDENTICAL")
+        elif abs(overhead) <= MAX_SIZE_OVERHEAD:
+            print("Result: ✓ WITHIN THRESHOLD")
+        else:
+            print("Result: ✗ EXCEEDS THRESHOLD")
+
+        assert abs(overhead) <= MAX_SIZE_OVERHEAD, (
+            f"MDD size overhead {overhead:+.1%} exceeds {MAX_SIZE_OVERHEAD:.0%} threshold: "
+            f"reference={ref_size}, generated={gen_size}"
+        )
+
 
 class TestDetailedServiceComparison:
     """Detailed per-service comparison tests."""
@@ -866,34 +878,28 @@ class TestDetailedServiceComparison:
         if not yaml_svc:
             pytest.skip(f"{svc_name} not found in YAML MDD")
 
-        print(f"\nRequest params:")
+        print("\nRequest params:")
         print(f"  ODX:  {len(odx_svc.request_params)}")
         print(f"  YAML: {len(yaml_svc.request_params)}")
 
         for i, (odx_p, yaml_p) in enumerate(
-            zip(odx_svc.request_params, yaml_svc.request_params)
+            zip(odx_svc.request_params, yaml_svc.request_params, strict=False)
         ):
             print(f"\n  Param [{i}]:")
             print(
                 f"    ODX:  name={odx_p.short_name!r} byte={odx_p.byte_position} bit={odx_p.bit_position}"
             )
-            print(
-                f"          type={odx_p.specific_data_type} coded={odx_p.coded_value}"
-            )
+            print(f"          type={odx_p.specific_data_type} coded={odx_p.coded_value}")
             print(
                 f"    YAML: name={yaml_p.short_name!r} byte={yaml_p.byte_position} bit={yaml_p.bit_position}"
             )
-            print(
-                f"          type={yaml_p.specific_data_type} coded={yaml_p.coded_value}"
-            )
+            print(f"          type={yaml_p.specific_data_type} coded={yaml_p.coded_value}")
 
-        print(f"\nPositive responses:")
+        print("\nPositive responses:")
         print(f"  ODX count:  {odx_svc.pos_response_count}")
         print(f"  YAML count: {yaml_svc.pos_response_count}")
 
-        for resp_idx in range(
-            min(odx_svc.pos_response_count, yaml_svc.pos_response_count)
-        ):
+        for resp_idx in range(min(odx_svc.pos_response_count, yaml_svc.pos_response_count)):
             odx_resp = (
                 odx_svc.pos_response_params[resp_idx]
                 if resp_idx < len(odx_svc.pos_response_params)
@@ -910,13 +916,9 @@ class TestDetailedServiceComparison:
             print(f"    YAML: {len(yaml_resp)}")
 
             for i, odx_p in enumerate(odx_resp):
-                print(
-                    f"      ODX[{i}]:  {odx_p.short_name!r} type={odx_p.specific_data_type}"
-                )
+                print(f"      ODX[{i}]:  {odx_p.short_name!r} type={odx_p.specific_data_type}")
             for i, yaml_p in enumerate(yaml_resp):
-                print(
-                    f"      YAML[{i}]: {yaml_p.short_name!r} type={yaml_p.specific_data_type}"
-                )
+                print(f"      YAML[{i}]: {yaml_p.short_name!r} type={yaml_p.specific_data_type}")
 
 
 class TestParamTypeDistribution:
@@ -991,7 +993,7 @@ class TestParamTypeDistribution:
         odx_counts = count_param_types(odx_structure)
         yaml_counts = count_param_types(yaml_structure)
 
-        print(f"\n=== PARAMETER TYPE DISTRIBUTION ===")
+        print("\n=== PARAMETER TYPE DISTRIBUTION ===")
         print(f"{'Type':<20} {'ODX':<8} {'YAML':<8} {'Diff':<8}")
         print("-" * 44)
 
@@ -1005,6 +1007,4 @@ class TestParamTypeDistribution:
             print(f"{name:<20} {odx_c:<8} {yaml_c:<8} {diff_str:<8}")
 
         print("-" * 44)
-        print(
-            f"{'Total':<20} {sum(odx_counts.values()):<8} {sum(yaml_counts.values()):<8}"
-        )
+        print(f"{'Total':<20} {sum(odx_counts.values()):<8} {sum(yaml_counts.values()):<8}")
