@@ -22,8 +22,8 @@ from yaml_to_mdd.models.routines import RoutineDefinition
 
 def _create_coded_const_param(
     short_name: str,
-    byte_position: int,
     coded_value: int,
+    byte_position: int | None = None,
     bit_length: int = 8,
     semantic: str | None = None,
 ) -> IRParam:
@@ -160,7 +160,6 @@ def generate_read_did_service(
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x22,
                 semantic="SERVICE_ID",
             ),
@@ -179,7 +178,6 @@ def generate_read_did_service(
     response_params: list[IRParam] = [
         _create_coded_const_param(
             short_name="SID_PR",
-            byte_position=0,
             coded_value=0x62,
             semantic="SERVICE_ID",
         ),
@@ -255,7 +253,6 @@ def generate_write_did_service(
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x2E,
                 semantic="SERVICE_ID",
             ),
@@ -283,7 +280,6 @@ def generate_write_did_service(
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x6E,
                 semantic="SERVICE_ID",
             ),
@@ -338,7 +334,6 @@ def generate_session_control_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_RQ",
-                    byte_position=0,
                     coded_value=0x10,
                     semantic="SERVICE_ID",
                 ),
@@ -357,7 +352,6 @@ def generate_session_control_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_PR",
-                    byte_position=0,
                     coded_value=0x50,
                     semantic="SERVICE_ID",
                 ),
@@ -425,7 +419,6 @@ def generate_security_access_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_RQ",
-                    byte_position=0,
                     coded_value=0x27,
                     semantic="SERVICE_ID",
                 ),
@@ -444,7 +437,6 @@ def generate_security_access_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_PR",
-                    byte_position=0,
                     coded_value=0x67,
                     semantic="SERVICE_ID",
                 ),
@@ -481,7 +473,6 @@ def generate_security_access_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_RQ",
-                    byte_position=0,
                     coded_value=0x27,
                     semantic="SERVICE_ID",
                 ),
@@ -506,7 +497,6 @@ def generate_security_access_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_PR",
-                    byte_position=0,
                     coded_value=0x67,
                     semantic="SERVICE_ID",
                 ),
@@ -527,7 +517,6 @@ def generate_security_access_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_NR",
-                    byte_position=0,
                     coded_value=0x7F,
                     semantic="SERVICE_ID",
                 ),
@@ -593,7 +582,6 @@ def generate_ecu_reset_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_RQ",
-                    byte_position=0,
                     coded_value=0x11,
                     semantic="SERVICE_ID",
                 ),
@@ -612,7 +600,6 @@ def generate_ecu_reset_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_PR",
-                    byte_position=0,
                     coded_value=0x51,
                     semantic="SERVICE_ID",
                 ),
@@ -671,7 +658,6 @@ def generate_authentication_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_RQ",
-                    byte_position=0,
                     coded_value=0x29,
                     semantic="SERVICE_ID",
                 ),
@@ -689,7 +675,6 @@ def generate_authentication_services(
         response_params: list[IRParam] = [
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x69,
                 semantic="SERVICE_ID",
             ),
@@ -770,7 +755,6 @@ def generate_communication_control_services(
         request_params: list[IRParam] = [
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x28,
                 semantic="SERVICE_ID",
             ),
@@ -810,7 +794,6 @@ def generate_communication_control_services(
             params=(
                 _create_coded_const_param(
                     short_name="SID_PR",
-                    byte_position=0,
                     coded_value=0x68,
                     semantic="SERVICE_ID",
                 ),
@@ -847,7 +830,7 @@ def generate_transfer_data_services() -> list[IRDiagService]:
     - TransferData (0x36)
     - TransferExit (0x37)
 
-    Returns:
+    Returns
     -------
         List of IRDiagService for transfer operations.
 
@@ -860,7 +843,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x34,
                 semantic="SERVICE_ID",
             ),
@@ -897,7 +879,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x74,
                 semantic="SERVICE_ID",
             ),
@@ -934,7 +915,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x36,
                 semantic="SERVICE_ID",
             ),
@@ -959,7 +939,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x76,
                 semantic="SERVICE_ID",
             ),
@@ -997,7 +976,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x37,
                 semantic="SERVICE_ID",
             ),
@@ -1010,7 +988,6 @@ def generate_transfer_data_services() -> list[IRDiagService]:
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x77,
                 semantic="SERVICE_ID",
             ),
@@ -1055,19 +1032,13 @@ def generate_routine_services(
     services = []
 
     if routine_def.supports_start():
-        services.append(
-            _generate_routine_start(routine_id, routine_def, sessions, security)
-        )
+        services.append(_generate_routine_start(routine_id, routine_def, sessions, security))
 
     if routine_def.supports_stop():
-        services.append(
-            _generate_routine_stop(routine_id, routine_def, sessions, security)
-        )
+        services.append(_generate_routine_stop(routine_id, routine_def, sessions, security))
 
     if routine_def.supports_result():
-        services.append(
-            _generate_routine_result(routine_id, routine_def, sessions, security)
-        )
+        services.append(_generate_routine_result(routine_id, routine_def, sessions, security))
 
     return services
 
@@ -1085,7 +1056,6 @@ def _generate_routine_start(
     request_params: list[IRParam] = [
         _create_coded_const_param(
             short_name="SID_RQ",
-            byte_position=0,
             coded_value=0x31,
             semantic="SERVICE_ID",
         ),
@@ -1107,9 +1077,7 @@ def _generate_routine_start(
     request = IRRequest(
         short_name=f"{service_name}_Request",
         params=tuple(request_params),
-        constant_prefix=bytes(
-            [0x31, 0x01, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x31, 0x01, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     response = IRResponse(
@@ -1117,7 +1085,6 @@ def _generate_routine_start(
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x71,
                 semantic="SERVICE_ID",
             ),
@@ -1136,9 +1103,7 @@ def _generate_routine_start(
                 semantic="DATA",
             ),
         ),
-        constant_prefix=bytes(
-            [0x71, 0x01, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x71, 0x01, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     return IRDiagService(
@@ -1168,7 +1133,6 @@ def _generate_routine_stop(
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x31,
                 semantic="SERVICE_ID",
             ),
@@ -1186,9 +1150,7 @@ def _generate_routine_stop(
                 semantic="DATA",
             ),
         ),
-        constant_prefix=bytes(
-            [0x31, 0x02, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x31, 0x02, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     response = IRResponse(
@@ -1196,7 +1158,6 @@ def _generate_routine_stop(
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x71,
                 semantic="SERVICE_ID",
             ),
@@ -1215,9 +1176,7 @@ def _generate_routine_stop(
                 semantic="DATA",
             ),
         ),
-        constant_prefix=bytes(
-            [0x71, 0x02, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x71, 0x02, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     return IRDiagService(
@@ -1247,7 +1206,6 @@ def _generate_routine_result(
         params=(
             _create_coded_const_param(
                 short_name="SID_RQ",
-                byte_position=0,
                 coded_value=0x31,
                 semantic="SERVICE_ID",
             ),
@@ -1265,9 +1223,7 @@ def _generate_routine_result(
                 semantic="DATA",
             ),
         ),
-        constant_prefix=bytes(
-            [0x31, 0x03, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x31, 0x03, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     response = IRResponse(
@@ -1275,7 +1231,6 @@ def _generate_routine_result(
         params=(
             _create_coded_const_param(
                 short_name="SID_PR",
-                byte_position=0,
                 coded_value=0x71,
                 semantic="SERVICE_ID",
             ),
@@ -1294,9 +1249,7 @@ def _generate_routine_result(
                 semantic="DATA",
             ),
         ),
-        constant_prefix=bytes(
-            [0x71, 0x03, (routine_id >> 8) & 0xFF, routine_id & 0xFF]
-        ),
+        constant_prefix=bytes([0x71, 0x03, (routine_id >> 8) & 0xFF, routine_id & 0xFF]),
     )
 
     return IRDiagService(

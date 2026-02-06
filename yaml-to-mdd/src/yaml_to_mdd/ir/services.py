@@ -103,7 +103,7 @@ class IRParam:
     """
 
     short_name: str
-    byte_position: int = 0
+    byte_position: int | None = None
     bit_position: int | None = None
     semantic: str | None = None
 
