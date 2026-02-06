@@ -101,8 +101,8 @@ python validate.py your-ecu.yml
 
 ```bash
 cd yaml-to-mdd
-pip install -e .
-yaml-to-mdd convert ../yaml-schema/your-ecu.yml -o output.mdd
+poetry install
+poetry run yaml-to-mdd convert ../yaml-schema/your-ecu.yml -o output.mdd
 ```
 
 ### 4. Run OpenSOVD CDA
@@ -119,7 +119,7 @@ This repository includes a Docker setup to run [OpenSOVD Classic Diagnostic Adap
 ### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.11+ (for yaml-to-mdd / recommended to use with Poetry) 
+- Python 3.11+ (for yaml-to-mdd / recommended to use with Poetry)
 
 ### Using the Convenience Script
 

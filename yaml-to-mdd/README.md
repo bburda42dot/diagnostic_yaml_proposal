@@ -30,7 +30,7 @@ apt install flatbuffers-compiler protobuf-compiler
 
 ```bash
 # Clone the repository
-cd opensovd-server/yaml-to-mdd
+cd diagnostic_yaml_proposal/yaml-to-mdd
 
 # Install with Poetry
 poetry install
@@ -55,8 +55,8 @@ poetry run yaml-to-mdd validate input.yml --summary
 # Convert a YAML file to MDD
 poetry run yaml-to-mdd convert input.yml -o output.mdd
 
-# Convert with compression
-poetry run yaml-to-mdd convert input.yml -o output.mdd --compression gzip
+# Convert with compression (default: lzma)
+poetry run yaml-to-mdd convert input.yml -o output.mdd --compression lzma
 
 # Convert for specific audience
 poetry run yaml-to-mdd convert input.yml -o aftermarket.mdd --audience aftermarket
@@ -92,7 +92,7 @@ yaml-to-mdd convert <file> [options]
 Options:
   -o, --output       Output file path (default: input with .mdd extension)
   -a, --audience     Target audience filter (development, production, aftermarket, oem)
-  -c, --compression  Compression algorithm: gzip, zstd
+  -c, --compression  Compression algorithm: lzma (default), gzip, zstd, none
   -f, --force        Overwrite output file if it exists
   --dry-run          Validate and serialize without writing file
   -V, --verbose      Show detailed conversion progress
@@ -125,7 +125,7 @@ yaml-to-mdd --version
 - [x] Access patterns
 - [x] Memory regions and data blocks
 - [x] Audience filtering
-- [x] Compression (gzip, zstd)
+- [x] Compression (lzma default, gzip, zstd)
 - [x] Variants (base + named variants with detection patterns)
 - [x] Variant detection (response_param_match for ECU variant identification)
 - [x] Routines (RoutineControl 0x31 - start, stop, results)
@@ -146,18 +146,41 @@ The converter produces MDD files that match reference ODX-derived MDDs:
 | FLXC1000   | 28/28    | 3/3      | ✓      |
 | FLXCNG1000 | 22/22    | 2/2      | ✓      |
 
+### Known Limitations vs ODX-Derived MDD
+
+The converter produces functionally equivalent MDD files but with some differences
+compared to ODX-derived (Kotlin odx-converter) output:
+
+| ODX Feature | Status | Notes |
+| --- | --- | --- |
+| `longName` on DiagComm/DiagLayer | Not emitted | ODX contains multilingual long names; YAML has no equivalent field |
+| `functClasses` on DiagLayer | Not emitted | Functional classification metadata from ODX |
+| `stateTransitionRefs` on State | Not emitted | ODX state charts carry explicit transition refs |
+| ComParams (full ProtStack) | Not converted | YAML `comparams` section is parsed but not serialized to MDD |
+| SDGs (Special Data Groups) | Not converted | YAML `sdgs` section is parsed but not serialized to MDD |
+| ECU Jobs (SingleEcuJob) | Not converted | YAML `ecu_jobs` section is parsed but not serialized to MDD |
+| Complex types (structs, arrays) | Not converted | Struct/array DOPs not yet mapped to MDD |
+| Audience gating | Partial | Audience-based filtering works for DIDs/routines but is not serialized as `Audience` tables in MDD |
+
+These gaps mean the generated MDD is typically **smaller** than the ODX-derived
+reference (fewer metadata tables), but semantically equivalent for diagnostic
+operations. The FlatBuffers object sharing (DiagCodedType, Protocol, DOP,
+DiagService) matches the Kotlin reference exactly.
+
 ### Planned
 
 - [ ] Complex types (structs, arrays)
-- [ ] ComParams
-- [ ] SDGs (Special Data Groups)
-- [ ] ECU Jobs
+- [ ] ComParams serialization to MDD
+- [ ] SDGs serialization to MDD
+- [ ] ECU Jobs serialization to MDD
+- [ ] `longName` / `functClasses` support
 
 ### Nice to Have
 
 - [ ] Reverse conversion (MDD → YAML)
 - [ ] ODX export via odxtools integration
 - [ ] Round-trip validation
+- [ ] Auto-generate JSON Schema from Pydantic models
 
 ## Input Format
 
@@ -205,18 +228,20 @@ access_patterns:
     security: none
     authentication: none
 
-# ... see examples/ directory for more
+# ... see yaml-schema/ for more examples
 ```
 
 ## Examples
 
-The `examples/` directory contains sample diagnostic descriptions:
+Example diagnostic descriptions are in the `yaml-schema/` directory:
 
-- **`examples/minimal/`** - Bare minimum required for a valid file
-- **`examples/basic/`** - Common features: sessions, DIDs, types, DTCs
+- **[`../yaml-schema/minimal-ecu.yml`](../yaml-schema/minimal-ecu.yml)** - Bare minimum required for a valid file
+- **[`../yaml-schema/example-ecm.yml`](../yaml-schema/example-ecm.yml)** - Full example with variants, routines, authentication, DTCs
 
-For a full-featured example with all schema capabilities, see:
-- **`../diagnostic_yaml/example-ecm.yml`** - Variants, routines, memory, authentication
+Integration test golden files with multi-variant ECUs:
+
+- **[`tests/integration/golden/FLXC1000_yaml.yaml`](tests/integration/golden/FLXC1000_yaml.yaml)** - 3 variants, 28 services
+- **[`tests/integration/golden/FLXCNG1000_yaml.yaml`](tests/integration/golden/FLXCNG1000_yaml.yaml)** - 2 variants, 22 services
 
 ## Output Format
 
@@ -268,8 +293,8 @@ print(f"DIDs: {len(doc.dids) if doc.dids else 0}")
 transformer = YamlToIRTransformer()
 ir_db = transformer.transform(doc)
 
-# Write MDD file
-writer = MDDWriter(compression="gzip")
+# Write MDD file (default compression: lzma)
+writer = MDDWriter()
 writer.write(ir_db, "my-ecu.mdd")
 
 # Or get bytes without writing
@@ -282,12 +307,12 @@ See [doc/design.md](./doc/design.md) for detailed architecture documentation.
 
 ## Related Documentation
 
-- [diagnostic_yaml/SCHEMA.md](../diagnostic_yaml/SCHEMA.md) - Complete YAML schema reference
-- [diagnostic_yaml/ODX_YAML_MAPPING.md](../diagnostic_yaml/ODX_YAML_MAPPING.md) - ODX to YAML mapping
+- [yaml-schema/SCHEMA.md](../yaml-schema/SCHEMA.md) - Complete YAML schema reference
+- [yaml-schema/ODX_YAML_MAPPING.md](../yaml-schema/ODX_YAML_MAPPING.md) - ODX to YAML mapping
 
 ## Related Projects
 
 - [odx-converter](https://github.com/eclipse-opensovd/odx-converter) - ODX to MDD converter (Kotlin)
 - [classic-diagnostic-adapter](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) - MDD runtime consumer
-- [diagnostic_yaml](../diagnostic_yaml/) - YAML schema definition
+- [yaml-schema/](../yaml-schema/) - YAML schema definition
 - [odxtools](https://github.com/mercedes-benz/odxtools) - ODX Python library

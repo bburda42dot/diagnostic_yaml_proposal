@@ -14,7 +14,6 @@ This document describes the architecture and design of the `yaml-to-mdd` convert
 
 ### 1.3 Non-Goals (Current Scope)
 
-- Multi-variant ECU support (deferred to later iteration)
 - ECU Jobs with embedded code
 - ODX export/integration
 - MDD → YAML reverse conversion
