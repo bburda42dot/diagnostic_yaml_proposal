@@ -1,12 +1,19 @@
 #!/bin/bash
-# run-cda.sh - Convert YAML files to MDD and run OpenSOVD Classic Diagnostic Adapter
+# run-cda.sh - Convert YAML files to MDD and run OpenSOVD Classic Diagnostic Adapter with ECU Simulator
 #
-# Usage: ./run-cda.sh [options] <yaml-file> [yaml-file...]
+# This script:
+#   1. Converts YAML diagnostic files to MDD format using yaml-to-mdd
+#   2. Starts ECU Simulator for testing diagnostic communication
+#   3. Starts Classic Diagnostic Adapter with generated MDD databases
+#
+# Usage: ./run-cda.sh [options] [yaml-file...]
+#
+# If no YAML files specified, uses golden files from yaml-to-mdd/tests/integration/golden/
 #
 # Options:
 #   --no-docker    Only convert, don't run CDA
-#   --port PORT    HTTP port for CDA (default: 8080)
-#   --build        Force rebuild of CDA Docker image
+#   --port PORT    HTTP port for CDA (default: 20002)
+#   --build        Force rebuild of Docker images
 #   --clean        Remove existing .mdd files before converting
 #   -v, --verbose  Verbose output
 #   -h, --help     Show this help
@@ -31,19 +38,27 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 print_usage() {
-    echo "Usage: $0 [options] <yaml-file> [yaml-file...]"
+    echo "Usage: $0 [options] [yaml-file...]"
     echo ""
-    echo "Convert Diagnostic YAML files to MDD and run OpenSOVD Classic Diagnostic Adapter"
+    echo "Convert Diagnostic YAML files to MDD and run OpenSOVD CDA with ECU Simulator"
+    echo ""
+    echo "If no YAML files are specified, uses golden files from:"
+    echo "  yaml-to-mdd/tests/integration/golden/*.yaml"
     echo ""
     echo "Options:"
-    echo "  --no-docker    Only convert, don't run CDA"
+    echo "  --no-docker    Only convert, don't run Docker services"
     echo "  --port PORT    HTTP port for CDA (default: 20002)"
-    echo "  --build        Force rebuild of CDA Docker image"
+    echo "  --build        Force rebuild of Docker images"
     echo "  --clean        Remove existing .mdd files before converting"
     echo "  -v, --verbose  Verbose output"
     echo "  -h, --help     Show this help"
     echo ""
+    echo "Services started:"
+    echo "  - ecu-sim: ECU Simulator (port 8181)"
+    echo "  - cda: Classic Diagnostic Adapter (port 20002 by default)"
+    echo ""
     echo "Examples:"
+    echo "  $0                                    # Use golden files"
     echo "  $0 yaml-schema/example-ecm.yml"
     echo "  $0 yaml-schema/example-ecm.yml yaml-schema/minimal-ecu.yml"
     echo "  $0 --port 9090 yaml-schema/*.yml"
@@ -102,11 +117,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check input files
+# Use golden files as default if no input specified
 if [[ ${#YAML_FILES[@]} -eq 0 ]]; then
-    error "No input YAML files specified"
-    print_usage
-    exit 1
+    GOLDEN_DIR="$YAML_TO_MDD_DIR/tests/integration/golden"
+    if [[ -d "$GOLDEN_DIR" ]]; then
+        log "No input files specified, using golden files from $GOLDEN_DIR"
+        for yaml in "$GOLDEN_DIR"/*.yaml; do
+            [[ -f "$yaml" ]] && YAML_FILES+=("$yaml")
+        done
+    fi
+
+    if [[ ${#YAML_FILES[@]} -eq 0 ]]; then
+        error "No input YAML files specified and no golden files found"
+        print_usage
+        exit 1
+    fi
 fi
 
 # Verify all files exist
@@ -153,20 +178,20 @@ MDD_FILES=()
 for yaml_file in "${YAML_FILES[@]}"; do
     # Resolve absolute path
     yaml_abs="$(cd "$(dirname "$yaml_file")" && pwd)/$(basename "$yaml_file")"
-    
+
     # Generate output filename
     basename="${yaml_file##*/}"
     basename="${basename%.yml}"
     basename="${basename%.yaml}"
     mdd_file="$OUTPUT_DIR/${basename}.mdd"
-    
+
     log "Converting $yaml_file -> $(basename "$mdd_file")"
-    
+
     CONVERT_ARGS=("convert" "$yaml_abs" "-o" "$mdd_file" "--force")
     if [[ "$VERBOSE" == true ]]; then
         CONVERT_ARGS+=("-v")
     fi
-    
+
     if $YAML_TO_MDD_CMD "${CONVERT_ARGS[@]}"; then
         MDD_FILES+=("$mdd_file")
         ((++CONVERTED))
@@ -193,8 +218,12 @@ done
 if [[ "$NO_DOCKER" == true ]]; then
     log "Done (--no-docker specified)"
     echo ""
-    echo "To run CDA manually:"
+    echo "To run the full setup manually:"
     echo "  CDA_PORT=$PORT docker compose up"
+    echo ""
+    echo "This will start:"
+    echo "  - ECU Simulator at http://localhost:8181"
+    echo "  - CDA at http://localhost:$PORT"
     exit 0
 fi
 
@@ -220,14 +249,19 @@ log "  Databases: $OUTPUT_DIR (${#MDD_FILES[@]} files)"
 # Export port for docker-compose
 export CDA_PORT="$PORT"
 
-# Check if image exists
-if ! docker image inspect diagnostic-yaml/cda:local &> /dev/null || [[ "$FORCE_BUILD" == true ]]; then
-    log "Building CDA image (this may take a few minutes on first run)..."
+# Check if images exist
+CDA_EXISTS=$(docker image inspect diagnostic-yaml/cda:local &> /dev/null && echo "yes" || echo "no")
+ECU_EXISTS=$(docker image inspect diagnostic-yaml/ecu-sim:local &> /dev/null && echo "yes" || echo "no")
+
+if [[ "$CDA_EXISTS" == "no" ]] || [[ "$ECU_EXISTS" == "no" ]] || [[ "$FORCE_BUILD" == true ]]; then
+    log "Building Docker images (this may take a few minutes on first run)..."
     docker compose build
 fi
 
 log ""
-log "Starting CDA at http://localhost:$PORT"
+log "Starting ECU Simulator and Classic Diagnostic Adapter..."
+log "  ECU Simulator control: http://localhost:${SIM_CONTROL_PORT:-8181}"
+log "  CDA API: http://localhost:$PORT"
 log "Press Ctrl+C to stop"
 log ""
 
