@@ -17,13 +17,13 @@ This document provides an index of all available documentation for the yaml-to-m
   - [README.md](../examples/basic/README.md) - Basic example documentation
 
 ### YAML Schema Reference
-The schema documentation is in the `diagnostic_yaml/` directory (parent of yaml-to-mdd):
-- [SCHEMA.md](../../diagnostic_yaml/SCHEMA.md) - Complete schema reference
-- [ODX_YAML_MAPPING.md](../../diagnostic_yaml/ODX_YAML_MAPPING.md) - ODX to YAML mapping
-- [schema.json](../../diagnostic_yaml/schema.json) - JSON Schema for validation
+The schema documentation is in the `yaml-schema/` directory (sibling of yaml-to-mdd):
+- [SCHEMA.md](../../yaml-schema/SCHEMA.md) - Complete schema reference
+- [ODX_YAML_MAPPING.md](../../yaml-schema/ODX_YAML_MAPPING.md) - ODX to YAML mapping
+- [schema.json](../../yaml-schema/schema.json) - JSON Schema for validation
 
 ### Full Examples
-- [example-ecm.yml](../../diagnostic_yaml/example-ecm.yml) - Full-featured example with all schema capabilities
+- [example-ecm.yml](../../yaml-schema/example-ecm.yml) - Full-featured example with all schema capabilities
 
 ## Developer Documentation
 
@@ -39,10 +39,11 @@ The main modules are documented in their `__init__.py` files:
 - `yaml_to_mdd.models` - Pydantic models for YAML schema validation
 - `yaml_to_mdd.transform` - YAML to IR transformation
 - `yaml_to_mdd.converters` - IR to MDD (FlatBuffers/Protobuf) conversion
+  - Includes `MDDWriter` for writing and `MDDReader` for reading MDD files
 - `yaml_to_mdd.validation` - Semantic validation beyond schema
 - `yaml_to_mdd.filter` - Audience filtering
 - `yaml_to_mdd.ir` - Intermediate Representation data structures
-- `yaml_to_mdd.cli` - Command-line interface
+- `yaml_to_mdd.cli` - Command-line interface utilities
 
 ## Quick Reference
 
@@ -53,7 +54,7 @@ The main modules are documented in their `__init__.py` files:
 yaml-to-mdd validate <file> [-q] [-s] [-f text|table|tree] [--verbose]
 
 # Convert
-yaml-to-mdd convert <file> [-o output.mdd] [-a audience] [-c gzip|zstd] [-f] [--dry-run] [-V]
+yaml-to-mdd convert <file> [-o output.mdd] [-a audience] [-c lzma|gzip|zstd|none] [-f] [--dry-run] [-V]
 
 # Info
 yaml-to-mdd info <file>
@@ -75,53 +76,32 @@ doc = load_diagnostic_description("ecu.yaml")
 # Transform to IR
 ir_db = YamlToIRTransformer().transform(doc)
 
-# Write MDD
-MDDWriter(compression="gzip").write(ir_db, "ecu.mdd")
+# Write MDD (default compression: lzma)
+MDDWriter().write(ir_db, "ecu.mdd")
 ```
 
 ### Conversion Pipeline
 
-```
-YAML/JSON File
-     │
-     ▼
-┌─────────────────────┐
-│  Pydantic Models    │  ← Schema validation
-│  (yaml_to_mdd.models)│
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  Semantic Validator │  ← Cross-reference checks
-│  (yaml_to_mdd.validation)│
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  Audience Filter    │  ← Optional filtering
-│  (yaml_to_mdd.filter)│
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  IR Transformer     │  ← Build intermediate representation
-│  (yaml_to_mdd.transform)│
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  FlatBuffers        │  ← Serialize EcuData
-│  (yaml_to_mdd.converters)│
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  Protobuf Container │  ← Wrap in MDD file format
-│  (yaml_to_mdd.converters)│
-└─────────────────────┘
-     │
-     ▼
-   MDD File
+```mermaid
+flowchart TB
+    input[/"YAML/JSON File"/]
+
+    models["Pydantic Models<br/><i>(yaml_to_mdd.models)</i>"]
+    validator["Semantic Validator<br/><i>(yaml_to_mdd.validation)</i>"]
+    filter["Audience Filter<br/><i>(yaml_to_mdd.filter)</i>"]
+    transformer["IR Transformer<br/><i>(yaml_to_mdd.transform)</i>"]
+    flatbuf["FlatBuffers<br/><i>(yaml_to_mdd.converters)</i>"]
+    protobuf["Protobuf Container<br/><i>(yaml_to_mdd.converters)</i>"]
+
+    output[("MDD File")]
+
+    input --> models
+    models -->|"Schema validation"| validator
+    validator -->|"Cross-reference checks"| filter
+    filter -->|"Optional filtering"| transformer
+    transformer -->|"Build IR"| flatbuf
+    flatbuf -->|"Serialize EcuData"| protobuf
+    protobuf -->|"Wrap in MDD format"| output
 ```
 
 ## Related Projects

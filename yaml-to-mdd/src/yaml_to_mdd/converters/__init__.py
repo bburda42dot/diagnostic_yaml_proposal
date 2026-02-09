@@ -32,9 +32,10 @@ Example:
     >>> mdd_bytes = writer.write_bytes(ir_db)
 
 Compression Options:
-    - None: No compression (default)
+    - "lzma": LZMA compression (default, best compatibility with classic-diagnostic-adapter)
     - "gzip": Standard gzip compression
     - "zstd": Zstandard compression (requires zstandard package)
+    - None: No compression
 
 
 """

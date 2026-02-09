@@ -22,34 +22,33 @@ This document describes the architecture and design of the `yaml-to-mdd` convert
 
 ### 2.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          yaml-to-mdd converter                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────┐    ┌──────────────────┐    ┌──────────────────────┐   │
-│  │   YAML/JSON  │───▶│  Pydantic Models │───▶│  Intermediate        │   │
-│  │    Parser    │    │  (Validated)     │    │  Representation (IR) │   │
-│  └──────────────┘    └──────────────────┘    └──────────────────────┘   │
-│                                                         │               │
-│                                                         ▼               │
-│                                             ┌──────────────────────┐    │
-│                                             │  IR → MDD Transformer│    │
-│                                             │  - DiagService Build │    │
-│                                             │  - DOP/Type Convert  │    │
-│                                             │  - DTC Mapper        │    │
-│                                             └──────────────────────┘    │
-│                                                         │               │
-│                                                         ▼               │
-│                                             ┌──────────────────────┐    │
-│                                             │     MDD Writer       │    │
-│                                             │  - FlatBuffers       │    │
-│                                             │  - Protobuf          │    │
-│                                             └──────────────────────┘    │
-│                                                         │               │
-│                                                         ▼               │
-│                                                     .mdd file           │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph converter["yaml-to-mdd converter"]
+        direction TB
+
+        subgraph input["Input Layer"]
+            parser["YAML/JSON Parser"]
+            models["Pydantic Models<br/>(Validated)"]
+        end
+
+        ir["Intermediate<br/>Representation (IR)"]
+
+        subgraph transform["IR → MDD Transformer"]
+            diagservice["DiagService Build"]
+            doptype["DOP/Type Convert"]
+            dtcmapper["DTC Mapper"]
+        end
+
+        subgraph output["MDD Writer"]
+            flatbuf["FlatBuffers"]
+            protobuf["Protobuf"]
+        end
+
+        mddfile[(".mdd file")]
+    end
+
+    parser --> models --> ir --> transform --> output --> mddfile
 ```
 
 ### 2.2 Data Flow
@@ -128,12 +127,20 @@ class IRDatabase:
     """Root IR structure, maps to MDD DiagLayer"""
     ecu_name: str
     revision: str
-    dops: list[IRDOP]
-    services: list[IRDiagService]
-    dtcs: list[IRDTC]
-    memory_regions: list[IRMemoryRegion]
-    data_blocks: list[IRDataBlock]
-    metadata: dict[str, str]
+    author: str | None = None
+    description: str | None = None
+    schema_version: str = "opensovd.cda.diagdesc/v1"
+    dops: dict[str, IRDOP] = field(default_factory=dict)
+    services: dict[str, IRDiagService] = field(default_factory=dict)
+    sessions: dict[str, int] = field(default_factory=dict)
+    security_levels: dict[str, int] = field(default_factory=dict)
+    did_read_services: dict[int, str] = field(default_factory=dict)
+    did_write_services: dict[int, str] = field(default_factory=dict)
+    routine_services: dict[int, list[str]] = field(default_factory=dict)
+    memory_regions: list[IRMemoryRegion] = field(default_factory=list)
+    data_blocks: list[IRDataBlock] = field(default_factory=list)
+    dtcs: list[IRDTC] = field(default_factory=list)
+    variants: list[IRVariant] = field(default_factory=list)
 ```
 
 ### 3.3 Converters
@@ -204,19 +211,40 @@ def convert_dtc(dtc_id: str, dtc_def: DtcDefinition) -> IR_DTC:
 Constructs the `EcuData` FlatBuffer following the schema from odx-converter.
 
 **FlatBuffers Structure:**
-```
-EcuData (root)
-├── name: string              # ECU name (e.g., "MY_ECU")
-├── variants: [EcuVariant]    # Array of variants (at least one)
-│   └── EcuVariant
-│       ├── name: string
-│       ├── shortName: string
-│       ├── diagLayer: DiagLayer
-│       │   ├── dops: [DOP]
-│       │   ├── diagComms: [DiagComm]  # Services
-│       │   └── ...
-│       └── variantPattern: VariantPattern
-└── ecuJobs: [SingleEcuJob]   # ECU jobs (not yet supported)
+
+```mermaid
+classDiagram
+    class EcuData {
+        +string name
+        +EcuVariant[] variants
+        +SingleEcuJob[] ecuJobs
+    }
+
+    class EcuVariant {
+        +string name
+        +string shortName
+        +DiagLayer diagLayer
+        +VariantPattern variantPattern
+    }
+
+    class DiagLayer {
+        +DOP[] dops
+        +DiagComm[] diagComms
+        +...
+    }
+
+    class VariantPattern {
+        +...
+    }
+
+    class SingleEcuJob {
+        «not yet supported»
+    }
+
+    EcuData "1" --> "1..*" EcuVariant : variants
+    EcuData "1" --> "0..*" SingleEcuJob : ecuJobs
+    EcuVariant "1" --> "1" DiagLayer : diagLayer
+    EcuVariant "1" --> "0..1" VariantPattern : variantPattern
 ```
 
 **Implementation:**
@@ -232,8 +260,8 @@ class IRToFlatBuffersConverter:
 
         # Create DiagLayer with DOPs and services
         diag_layer = DiagLayerT()
-        diag_layer.dops = [self._convert_dop(dop) for dop in db.dops]
-        diag_layer.diagComms = [self._convert_service(svc) for svc in db.services]
+        diag_layer.dops = [self._convert_dop(dop) for dop in db.dops.values()]
+        diag_layer.diagComms = [self._convert_service(svc) for svc in db.services.values()]
 
         # Create EcuVariant
         variant = EcuVariantT()
@@ -325,7 +353,7 @@ mdd.ParseFromString(data[len(FILE_MAGIC):])
 | `security`        | Referenced by services, not standalone                       |
 | `dids`            | `DiagComm[]` with SID 0x22/0x2E in `DiagLayer`               |
 | `routines`        | `DiagComm[]` with SID 0x31 in `DiagLayer`                    |
-| `dtcs`            | `DTC[]` in `EcuData` (not yet implemented)                   |
+| `dtcs`            | `DTC[]` in `DiagLayer`                                       |
 | `types`           | `DOP[]` referenced by params in `DiagLayer`                  |
 | `access_patterns` | Mapped to service-level access                               |
 
@@ -419,12 +447,12 @@ class LoaderError(Exception):
 
 ## 8. Future Considerations
 
-### 8.1 Variant Support
+### 8.1 Complex Types Support
 
-When adding variant support:
-- Parse `variants.definitions` section
-- Generate multiple `DiagLayer` instances
-- Implement variant detection patterns as `VariantPattern`
+When adding complex types support:
+- Parse struct and array type definitions
+- Map to FlatBuffers STRUCTURE and ARRAY DOP types
+- Handle nested type references
 
 ### 8.2 ECU Jobs
 
@@ -442,7 +470,7 @@ Potential integration with odxtools:
 
 ## 9. References
 
-- [OpenSOVD CDA Schema](../diagnostic_yaml/schema.json)
+- [OpenSOVD CDA Schema](../yaml-schema/schema.json)
 - [MDD Format (FlatBuffers)](https://github.com/eclipse-opensovd/odx-converter/blob/main/database/src/main/fbs/diagnostic_description.fbs)
 - [MDD Container (Protobuf)](https://github.com/eclipse-opensovd/odx-converter/blob/main/database/src/main/proto/file_format.proto)
 - [odx-converter Implementation](https://github.com/eclipse-opensovd/odx-converter)

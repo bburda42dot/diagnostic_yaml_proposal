@@ -112,7 +112,8 @@ if result.is_valid:
 else:
     print("Validation failed!")
     for error in result.errors:
-        print(f"  - [{error.code}] {error.path}: {error.message}")
+        location = error.location.path if error.location else "unknown"
+        print(f"  - [{error.code}] {location}: {error.message}")
 ```
 
 ## Conversion
@@ -140,6 +141,10 @@ writer.write(ir_db, Path("ecu.mdd"))
 ### With Compression
 
 ```python
+# lzma compression (default)
+writer = MDDWriter(compression="lzma")
+writer.write(ir_db, Path("ecu.mdd"))
+
 # gzip compression
 writer = MDDWriter(compression="gzip")
 writer.write(ir_db, Path("ecu.mdd"))
@@ -147,12 +152,16 @@ writer.write(ir_db, Path("ecu.mdd"))
 # zstd compression (better ratio, requires zstandard package)
 writer = MDDWriter(compression="zstd")
 writer.write(ir_db, Path("ecu.mdd"))
+
+# No compression
+writer = MDDWriter(compression=None)
+writer.write(ir_db, Path("ecu.mdd"))
 ```
 
 ### Get MDD Bytes Without Writing
 
 ```python
-writer = MDDWriter(compression="gzip")
+writer = MDDWriter(compression="lzma")
 mdd_bytes = writer.write_bytes(ir_db)
 
 print(f"MDD size: {len(mdd_bytes)} bytes")
@@ -242,7 +251,33 @@ for did_id, service_name in ir_db.did_write_services.items():
 
 ## Reading MDD Files
 
-### Read MDD Metadata
+### Using MDDReader (Recommended)
+
+```python
+from pathlib import Path
+from yaml_to_mdd.converters import MDDReader, read_mdd_structure
+
+# Option 1: Using the convenience function
+structure = read_mdd_structure(Path("ecu.mdd"))
+
+# Option 2: Using the reader class
+reader = MDDReader()
+structure = reader.read_structure(Path("ecu.mdd"))
+
+# Access parsed data
+print(f"ECU Name: {structure.ecu_name}")
+print(f"Revision: {structure.revision}")
+print(f"Variants: {list(structure.variants.keys())}")
+print(f"Services: {len(structure.services)}")
+print(f"Sessions: {structure.sessions}")
+print(f"Security Levels: {structure.security_levels}")
+
+# DoIP addressing (if available)
+if structure.doip_logical_ecu_address:
+    print(f"DoIP ECU Address: 0x{structure.doip_logical_ecu_address:04X}")
+```
+
+### Read MDD Metadata (Low-level)
 
 ```python
 from yaml_to_mdd.proto_generated import MDDFile
