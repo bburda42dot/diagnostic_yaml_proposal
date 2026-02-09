@@ -178,7 +178,6 @@ DiagService) matches the Kotlin reference exactly.
 ### Nice to Have
 
 - [ ] Reverse conversion (MDD → YAML)
-- [ ] ODX export via odxtools integration
 - [ ] Round-trip validation
 - [ ] Auto-generate JSON Schema from Pydantic models
 

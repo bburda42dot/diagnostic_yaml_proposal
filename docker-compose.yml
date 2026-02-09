@@ -1,16 +1,43 @@
-# Docker Compose for running OpenSOVD Classic Diagnostic Adapter
+# Docker Compose for running OpenSOVD Classic Diagnostic Adapter with ECU Simulator
 #
 # Usage:
 #   1. Convert your YAML files to MDD first:
-#      yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/example-ecm.mdd
+#      poetry run yaml-to-mdd convert yaml-schema/example-ecm.yml -o .output/example-ecm.mdd
 #
 #   2. Build and run:
 #      docker compose up --build
 #
 # Or use the convenience script:
 #   ./run-cda.sh yaml-schema/example-ecm.yml yaml-schema/minimal-ecu.yml
+#
+# This setup includes:
+#   - ecu-sim: ECU simulator for testing diagnostic communication
+#   - cda: Classic Diagnostic Adapter reading MDD files from .output/
 
 services:
+  ecu-sim:
+    build:
+      context: https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git#main:testcontainer/ecu-sim
+      dockerfile: docker/Dockerfile
+    image: diagnostic-yaml/ecu-sim:local
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - USE_MULTIPLE_IPS=true
+      - SIM_NETWORK_INTERFACE=eth0
+    ports:
+      - "${SIM_CONTROL_PORT:-8181}:8181"
+    networks:
+      - diagnostic-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8181/ || exit 1"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
   cda:
     build:
       context: https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git#main
@@ -18,23 +45,23 @@ services:
     image: diagnostic-yaml/cda:local
     container_name: cda
     ports:
-      - "${CDA_PORT:-20002}:${CDA_PORT:-20002}"
+      - "${CDA_PORT:-20002}:20002"
     volumes:
-      - ./.output:/data:ro
+      - ./.output:/app/yaml:ro
+    hostname: cda
+    networks:
+      - diagnostic-net
+    depends_on:
+      ecu-sim:
+        condition: service_healthy
     environment:
       - RUST_LOG=${RUST_LOG:-info}
-      - CDA_PORT=${CDA_PORT:-20002}
-    command:
-      - "-d"
-      - "/data"
-      - "--listen-port"
-      - "${CDA_PORT:-20002}"
-      - "--listen-address"
-      - "0.0.0.0"
+    command: ["-d", "/app/yaml"]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${CDA_PORT:-20002}/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+
+networks:
+  diagnostic-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.42.0.0/16
