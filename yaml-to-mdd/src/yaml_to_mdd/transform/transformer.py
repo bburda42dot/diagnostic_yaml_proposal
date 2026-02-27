@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from yaml_to_mdd.ir.database import (
     IRDTC,
     IRDatabase,
@@ -13,12 +15,14 @@ from yaml_to_mdd.ir.database import (
     IRSnapshotRecord,
     IRVariant,
 )
+from yaml_to_mdd.ir.services import IRDiagService
 from yaml_to_mdd.ir.types import (
     IRDOP,
     IRDataType,
     IRDiagCodedType,
     IRDiagCodedTypeName,
 )
+from yaml_to_mdd.models.audience import extract_audience_flags
 from yaml_to_mdd.models.dids import DIDDefinition
 from yaml_to_mdd.models.dtcs import (
     DTCDefinition,
@@ -27,6 +31,7 @@ from yaml_to_mdd.models.dtcs import (
 )
 from yaml_to_mdd.models.memory import AddressFormat, DataBlock, MemoryRegion
 from yaml_to_mdd.models.root import DiagnosticDescription
+from yaml_to_mdd.models.services import BaseServiceConfig
 from yaml_to_mdd.models.types import TypeDefinition
 from yaml_to_mdd.transform.service_generator import (
     generate_authentication_services,
@@ -60,6 +65,44 @@ class YamlToIRTransformer:
         # Track services that belong to specific variants (not base)
         # Maps variant pattern (e.g., "Boot") to list of service short_names
         self._variant_specific_services: dict[str, list[str]] = {}
+
+    @staticmethod
+    def _apply_audience(
+        service: IRDiagService,
+        config: BaseServiceConfig | None,
+    ) -> IRDiagService:
+        """Return *service* with audience fields set from *config*.
+
+        If *config* is ``None`` or has no audience, *service* is returned
+        unchanged.  Because ``IRDiagService`` is frozen we use
+        ``dataclasses.replace`` to produce a new instance.
+        """
+        if config is None or config.audience is None:
+            return service
+        enabled, disabled = extract_audience_flags(config.audience)
+        if enabled is None and disabled is None:
+            return service
+        return replace(
+            service,
+            audience_enabled=enabled,
+            audience_disabled=disabled,
+        )
+
+    @staticmethod
+    def _apply_audience_to_list(
+        services: list[IRDiagService],
+        config: BaseServiceConfig | None,
+    ) -> list[IRDiagService]:
+        """Apply audience from *config* to every service in *services*."""
+        if config is None or config.audience is None:
+            return services
+        enabled, disabled = extract_audience_flags(config.audience)
+        if enabled is None and disabled is None:
+            return services
+        return [
+            replace(s, audience_enabled=enabled, audience_disabled=disabled)
+            for s in services
+        ]
 
     def transform(self, doc: DiagnosticDescription) -> IRDatabase:
         """Transform a DiagnosticDescription to IRDatabase.
@@ -278,6 +321,15 @@ class YamlToIRTransformer:
                     sessions=sessions,
                     security=security,
                 )
+                # Propagate DID-level audience to the generated service
+                if did_def.audience is not None:
+                    aud_en, aud_dis = extract_audience_flags(did_def.audience)
+                    if aud_en is not None or aud_dis is not None:
+                        service = replace(
+                            service,
+                            audience_enabled=aud_en,
+                            audience_disabled=aud_dis,
+                        )
                 db.add_service(service)
                 db.did_read_services[did_id] = service.short_name
 
@@ -300,6 +352,15 @@ class YamlToIRTransformer:
                     sessions=write_sessions,
                     security=write_security,
                 )
+                # Propagate DID-level audience to the generated service
+                if did_def.audience is not None:
+                    aud_en, aud_dis = extract_audience_flags(did_def.audience)
+                    if aud_en is not None or aud_dis is not None:
+                        service = replace(
+                            service,
+                            audience_enabled=aud_en,
+                            audience_disabled=aud_dis,
+                        )
                 db.add_service(service)
                 db.did_write_services[did_id] = service.short_name
 
@@ -352,6 +413,8 @@ class YamlToIRTransformer:
             sessions_dict[display_name] = session.id
 
         services = generate_session_control_services(sessions_dict)
+        svc_cfg = doc.services.diagnosticSessionControl if doc.services else None
+        services = self._apply_audience_to_list(services, svc_cfg)
         for service in services:
             db.add_service(service)
 
@@ -387,6 +450,8 @@ class YamlToIRTransformer:
             # Generate security services marked as belonging to Boot variant
             # ODX convention: SecurityAccess only in Boot_Variant, not in base
             services = generate_security_access_services(levels, variant_ref="Boot")
+            svc_cfg = doc.services.securityAccess if doc.services else None
+            services = self._apply_audience_to_list(services, svc_cfg)
             # Track these services as belonging to Boot variant (ODX convention)
             boot_services: list[str] = []
             for service in services:
@@ -433,12 +498,14 @@ class YamlToIRTransformer:
                 reset_types[odx_name] = sf
 
             services = generate_ecu_reset_services(reset_types)
+            services = self._apply_audience_to_list(services, ecu_reset_cfg)
             for service in services:
                 db.add_service(service)
             return
 
         # Default reset services if no subfunctions defined
         services = generate_ecu_reset_services()
+        services = self._apply_audience_to_list(services, ecu_reset_cfg)
         for service in services:
             db.add_service(service)
 
@@ -478,6 +545,7 @@ class YamlToIRTransformer:
                 }
 
         services = generate_authentication_services(subfunctions)
+        services = self._apply_audience_to_list(services, auth_cfg)
         for service in services:
             db.add_service(service)
 
@@ -504,6 +572,7 @@ class YamlToIRTransformer:
                 control_types[name] = ct
 
         services = generate_communication_control_services(control_types)
+        services = self._apply_audience_to_list(services, comm_cfg)
         for service in services:
             db.add_service(service)
 

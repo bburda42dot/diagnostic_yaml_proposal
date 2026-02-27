@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 import flatbuffers
 
+from yaml_to_mdd.fbs_generated.dataformat.Audience import AudienceT
 from yaml_to_mdd.fbs_generated.dataformat.CodedConst import CodedConstT
 from yaml_to_mdd.fbs_generated.dataformat.ComParam import ComParamT
 from yaml_to_mdd.fbs_generated.dataformat.ComParamRef import ComParamRefT
@@ -85,6 +86,7 @@ from yaml_to_mdd.fbs_generated.dataformat.ValueEntry import ValueEntryT
 from yaml_to_mdd.fbs_generated.dataformat.Variant import VariantT
 from yaml_to_mdd.fbs_generated.dataformat.VariantPattern import VariantPatternT
 from yaml_to_mdd.ir.services import IRParamType
+from yaml_to_mdd.models.audience import audience_enabled_to_fbs_flags
 
 if TYPE_CHECKING:
     from yaml_to_mdd.ir.database import IRDatabase
@@ -1483,6 +1485,19 @@ class IRToFlatBuffersConverter:
         # Create DiagComm for metadata
         diag_comm = DiagCommT()
         diag_comm.shortName = ir_service.short_name
+
+        # Build Audience if present on the IR service
+        if ir_service.audience_enabled is not None or ir_service.audience_disabled is not None:
+            audience = AudienceT()
+            # Map enabled audience names to FBS boolean fields
+            fbs_flags = audience_enabled_to_fbs_flags(ir_service.audience_enabled)
+            for field_name, value in fbs_flags.items():
+                # field_name is e.g. "is_after_sales" -> camelCase attr "isAfterSales"
+                parts = field_name.split("_")
+                attr = parts[0] + "".join(p.capitalize() for p in parts[1:])
+                setattr(audience, attr, value)
+            diag_comm.audience = audience
+
         service.diagComm = diag_comm
 
         # Convert request (pass service_id for CodedConst generation)

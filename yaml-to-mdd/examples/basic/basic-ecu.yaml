@@ -97,6 +97,8 @@ access_patterns:
 services:
   diagnosticSessionControl:
     enabled: true
+    audience:
+      afterSales: true
 
   ecuReset:
     enabled: true

@@ -345,6 +345,88 @@ class TestAudienceFilterIntegration:
         mdd.ParseFromString(mdd_bytes[len(FILE_MAGIC) :])
         assert mdd.ecu_name == "AUDIENCE_ECU"
 
+    def test_audience_flags_emitted_in_mdd(self) -> None:
+        """Service-level audience flags should survive the full round-trip.
+
+        Uses a YAML with diagnosticSessionControl restricted to afterSales
+        and verifies the FBS Audience booleans are set on the generated
+        DiagComm.
+        """
+        yaml_data = {
+            "schema": "opensovd.cda.diagdesc/v1",
+            "meta": {
+                "author": "Audience Round-Trip Test",
+                "domain": "Test",
+                "created": "2026-01-01",
+                "revision": "1.0.0",
+                "description": "Audience round-trip validation",
+            },
+            "ecu": {
+                "id": "AUD_RT_ECU",
+                "name": "Audience Round-Trip ECU",
+                "addressing": {
+                    "doip": {
+                        "ip": "192.168.0.1",
+                        "logical_address": "0x0E00",
+                        "tester_address": "0x0E80",
+                    },
+                },
+            },
+            "sessions": {
+                "default": {"id": "0x01"},
+                "extended": {"id": "0x03"},
+            },
+            "services": {
+                "diagnosticSessionControl": {
+                    "enabled": True,
+                    "audience": {
+                        "development": False,
+                        "production": False,
+                        "afterSales": True,
+                    },
+                },
+            },
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(yaml_data, f)
+            yaml_path = Path(f.name)
+
+        doc = load_diagnostic_description(yaml_path)
+        transformer = YamlToIRTransformer()
+        ir_db = transformer.transform(doc)
+
+        # Verify IR services carry audience
+        session_services = [
+            s for s in ir_db.get_all_services() if s.service_id == 0x10
+        ]
+        assert len(session_services) >= 1
+        for svc in session_services:
+            assert svc.audience_enabled is not None
+            assert "afterSales" in svc.audience_enabled
+
+        # Write to MDD and read back
+        writer = MDDWriter()
+        mdd_bytes = writer.write_bytes(ir_db)
+
+        from yaml_to_mdd.converters.mdd_reader import MDDReader
+
+        with tempfile.NamedTemporaryFile(suffix=".mdd", delete=False) as mdd_f:
+            mdd_f.write(mdd_bytes)
+            mdd_path = Path(mdd_f.name)
+
+        reader = MDDReader()
+        structure = reader.read_structure(mdd_path)
+
+        # Session services (e.g. Default_Start, Extended_Start) should
+        # carry is_after_sales=True in the audience flags.
+        assert len(structure.service_audiences) > 0
+        for svc_name, flags in structure.service_audiences.items():
+            if svc_name.endswith("_Start"):
+                assert flags.get("is_after_sales") is True, (
+                    f"{svc_name} should have is_after_sales=True"
+                )
+
 
 class TestFlatBuffersValidation:
     """Tests for FlatBuffers data validation."""
