@@ -1615,6 +1615,28 @@ class IRToFlatBuffersConverter:
 
         return response
 
+    # Mapping from IRParamType (ParamSpecificData union indices) to FBS ParamType enum integers.
+    # These are two separate enumerations in the FlatBuffers schema:
+    #   ParamType (param_type field): CODED_CONST=0, DYNAMIC=1, LENGTH_KEY=2,
+    #     MATCHING_REQUEST_PARAM=3, NRC_CONST=4, PHYS_CONST=5, RESERVED=6,
+    #     SYSTEM=7, TABLE_ENTRY=8, TABLE_KEY=9, TABLE_STRUCT=10, VALUE=11
+    #   ParamSpecificData (specific_data union): CodedConst=1, Dynamic=2, ..., Value=7
+    _IR_PARAM_TYPE_TO_FBS: dict[IRParamType, int] = {
+        IRParamType.NONE: 0,                   # fallback → CODED_CONST
+        IRParamType.CODED_CONST: 0,            # CODED_CONST = 0
+        IRParamType.DYNAMIC: 1,                # DYNAMIC = 1
+        IRParamType.LENGTH_KEY_REF: 2,         # LENGTH_KEY = 2
+        IRParamType.MATCHING_REQUEST_PARAM: 3, # MATCHING_REQUEST_PARAM = 3
+        IRParamType.NRC_CONST: 4,              # NRC_CONST = 4
+        IRParamType.PHYS_CONST: 5,             # PHYS_CONST = 5
+        IRParamType.RESERVED: 6,               # RESERVED = 6
+        IRParamType.SYSTEM: 7,                 # SYSTEM = 7
+        IRParamType.TABLE_ENTRY: 8,            # TABLE_ENTRY = 8
+        IRParamType.TABLE_KEY: 9,              # TABLE_KEY = 9
+        IRParamType.TABLE_STRUCT: 10,          # TABLE_STRUCT = 10
+        IRParamType.VALUE: 11,                 # VALUE = 11
+    }
+
     def _convert_param(self, ir_param: IRParam) -> ParamT:
         """Convert IR Param to FlatBuffers Param.
 
@@ -1638,6 +1660,11 @@ class IRToFlatBuffersConverter:
 
         if ir_param.semantic:
             param.semantic = ir_param.semantic
+
+        # Set param_type from the FBS ParamType enum (separate from specificDataType/union).
+        # Without this, all params default to 0 (CODED_CONST), causing the CDA to call
+        # map_param_coded_const_from_uds for every param including VALUE params.
+        param.paramType = self._IR_PARAM_TYPE_TO_FBS.get(ir_param.param_type, 0)
 
         # Dispatch based on param_type for explicit type handling
         if ir_param.param_type == IRParamType.CODED_CONST:
