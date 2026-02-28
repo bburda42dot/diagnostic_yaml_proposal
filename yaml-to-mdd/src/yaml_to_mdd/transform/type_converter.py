@@ -78,8 +78,12 @@ def create_compu_method_for_type(type_def: TypeDefinition) -> IRCompuMethod | No
             unit=type_def.unit,
         )
 
-    # No conversion needed
-    return None
+    # No explicit conversion defined - use IDENTICAL (raw = physical) so the CDA
+    # can always find a compu method and decode the value without error.
+    return IRCompuMethod(
+        category=IRCompuCategory.IDENTICAL,
+        scales=(),
+    )
 
 
 def create_diag_coded_type(type_def: TypeDefinition) -> IRDiagCodedType:
