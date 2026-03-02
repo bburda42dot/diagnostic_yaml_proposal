@@ -60,6 +60,9 @@ class MDDStructure:
     # Services (set of short names)
     services: set[str] = field(default_factory=set)
 
+    # Service audience flags (service_name -> {flag_name: bool})
+    service_audiences: dict[str, dict[str, bool]] = field(default_factory=dict)
+
     # State charts (name -> states set)
     state_charts: dict[str, set[str]] = field(default_factory=dict)
 
@@ -281,7 +284,22 @@ class MDDReader:
             if diag_comm is not None:
                 short_name = diag_comm.ShortName()
                 if short_name:
-                    structure.services.add(short_name.decode("utf-8"))
+                    svc_name = short_name.decode("utf-8")
+                    structure.services.add(svc_name)
+
+                    # Extract audience flags if present
+                    audience = diag_comm.Audience()
+                    if audience is not None:
+                        flags: dict[str, bool] = {
+                            "is_development": bool(audience.IsDevelopment()),
+                            "is_manufacturing": bool(audience.IsManufacturing()),
+                            "is_supplier": bool(audience.IsSupplier()),
+                            "is_after_sales": bool(audience.IsAfterSales()),
+                            "is_after_market": bool(audience.IsAfterMarket()),
+                        }
+                        # Only record if at least one flag is set
+                        if any(flags.values()):
+                            structure.service_audiences[svc_name] = flags
 
     def _extract_state_charts(self, diag_layer: Any, structure: MDDStructure) -> None:
         """Extract state charts from DiagLayer.

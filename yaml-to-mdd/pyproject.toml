@@ -13,7 +13,7 @@ pydantic = "^2.5"
 typer = "^0.15"
 rich = "^13.7"
 flatbuffers = "^24.3"
-protobuf = "^5.26"
+protobuf = "^6.33"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

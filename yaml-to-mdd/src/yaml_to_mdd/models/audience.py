@@ -259,3 +259,83 @@ def parse_audience_set(value: Any) -> AudienceSet | None:
 
     msg = f"Invalid audience format: {type(value)}"
     raise ValueError(msg)
+
+
+# Mapping from YAML audience names to FBS Audience boolean field names.
+# The FBS Audience table has: isDevelopment, isManufacturing, isSupplier,
+# isAfterSales, isAfterMarket.  The YAML schema uses slightly different
+# names – this mapping bridges the two.
+_YAML_TO_FBS_AUDIENCE_FIELD: dict[str, str] = {
+    # StandardAudience enum values
+    "development": "is_development",
+    "production": "is_manufacturing",
+    "aftermarket": "is_after_market",
+    "supplier": "is_supplier",
+    # Extra CDA-native names
+    "afterSales": "is_after_sales",
+    "after_sales": "is_after_sales",
+    "manufacturing": "is_manufacturing",
+    "after_market": "is_after_market",
+    # Aliases that map to the closest CDA field
+    "oem": "is_manufacturing",
+    "internal": "is_development",
+}
+
+
+def extract_audience_flags(
+    audience_raw: dict[str, Any] | None,
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    """Convert a raw YAML audience dict to ``(enabled, disabled)`` tuples.
+
+    The function handles two formats:
+
+    1. **include/exclude** – ``{"include": ["development"], "exclude": []}``
+    2. **boolean flags** – ``{"development": false, "afterSales": true}``
+
+    For boolean flags, audiences set to ``True`` are placed in the
+    *enabled* tuple and audiences set to ``False`` in the *disabled*
+    tuple.  These tuples store the canonical YAML audience names (not
+    the FBS field names) so that downstream layers can map them to the
+    FBS ``AudienceT`` booleans via :data:`_YAML_TO_FBS_AUDIENCE_FIELD`.
+
+    Returns ``(None, None)`` when *audience_raw* is ``None`` (no
+    restriction).
+    """
+    if audience_raw is None:
+        return None, None
+
+    # Format 1: include/exclude dict
+    if "include" in audience_raw or "exclude" in audience_raw:
+        inc = tuple(str(a) for a in audience_raw.get("include", []))
+        exc = tuple(str(a) for a in audience_raw.get("exclude", []))
+        return (inc or None), (exc or None)
+
+    # Format 2: boolean flag dict  – e.g. {"development": False, "afterSales": True}
+    enabled: list[str] = []
+    disabled: list[str] = []
+    for name, value in audience_raw.items():
+        if isinstance(value, bool):
+            if value:
+                enabled.append(name)
+            else:
+                disabled.append(name)
+    return (tuple(enabled) or None), (tuple(disabled) or None)
+
+
+def audience_enabled_to_fbs_flags(
+    enabled: tuple[str, ...] | None,
+) -> dict[str, bool]:
+    """Map IR *audience_enabled* names to FBS ``AudienceT`` boolean kwargs.
+
+    Returns a dict suitable for unpacking into ``AudienceT(**flags)``.
+    Only audiences that are in *enabled* will be set to ``True``; the
+    rest default to ``False`` (the FlatBuffers default).
+    """
+    flags: dict[str, bool] = {}
+    if enabled is None:
+        return flags
+    for name in enabled:
+        fbs_field = _YAML_TO_FBS_AUDIENCE_FIELD.get(name)
+        if fbs_field is not None:
+            flags[fbs_field] = True
+    return flags

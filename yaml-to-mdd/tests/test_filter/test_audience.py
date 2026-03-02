@@ -5,6 +5,8 @@ from yaml_to_mdd.models.audience import (
     AudienceConfig,
     AudienceSet,
     StandardAudience,
+    audience_enabled_to_fbs_flags,
+    extract_audience_flags,
     parse_audience_set,
 )
 
@@ -193,3 +195,87 @@ class TestAudienceSetWithHierarchy:
             audience_set.is_accessible_with_hierarchy(StandardAudience.DEVELOPMENT, effective)
             is False
         )
+
+
+class TestExtractAudienceFlags:
+    """Tests for extract_audience_flags helper."""
+
+    def test_none_returns_none_tuple(self) -> None:
+        """None input should return (None, None)."""
+        enabled, disabled = extract_audience_flags(None)
+        assert enabled is None
+        assert disabled is None
+
+    def test_include_exclude_format(self) -> None:
+        """Should handle include/exclude dict format."""
+        enabled, disabled = extract_audience_flags(
+            {"include": ["development", "afterSales"], "exclude": ["production"]}
+        )
+        assert enabled is not None
+        assert "development" in enabled
+        assert "afterSales" in enabled
+        assert disabled is not None
+        assert "production" in disabled
+
+    def test_boolean_flags_format(self) -> None:
+        """Should handle boolean flag dict format."""
+        enabled, disabled = extract_audience_flags(
+            {"development": False, "production": False, "afterSales": True}
+        )
+        assert enabled is not None
+        assert "afterSales" in enabled
+        assert disabled is not None
+        assert "development" in disabled
+        assert "production" in disabled
+
+    def test_all_false_booleans(self) -> None:
+        """All-false booleans should yield None enabled, non-None disabled."""
+        enabled, disabled = extract_audience_flags(
+            {"development": False, "production": False, "afterSales": False}
+        )
+        assert enabled is None
+        assert disabled is not None
+        assert len(disabled) == 3
+
+    def test_empty_include_exclude(self) -> None:
+        """Empty include/exclude should return (None, None)."""
+        enabled, disabled = extract_audience_flags({"include": [], "exclude": []})
+        assert enabled is None
+        assert disabled is None
+
+
+class TestAudienceEnabledToFbsFlags:
+    """Tests for audience_enabled_to_fbs_flags mapping."""
+
+    def test_none_returns_empty(self) -> None:
+        """None input should return empty dict."""
+        assert audience_enabled_to_fbs_flags(None) == {}
+
+    def test_after_sales_maps_correctly(self) -> None:
+        """'afterSales' should map to is_after_sales."""
+        flags = audience_enabled_to_fbs_flags(("afterSales",))
+        assert flags == {"is_after_sales": True}
+
+    def test_development_maps_correctly(self) -> None:
+        """'development' should map to is_development."""
+        flags = audience_enabled_to_fbs_flags(("development",))
+        assert flags == {"is_development": True}
+
+    def test_multiple_audiences(self) -> None:
+        """Multiple audiences should produce multiple flags."""
+        flags = audience_enabled_to_fbs_flags(("development", "afterSales", "supplier"))
+        assert flags == {
+            "is_development": True,
+            "is_after_sales": True,
+            "is_supplier": True,
+        }
+
+    def test_production_maps_to_manufacturing(self) -> None:
+        """'production' should map to is_manufacturing (closest CDA equivalent)."""
+        flags = audience_enabled_to_fbs_flags(("production",))
+        assert flags == {"is_manufacturing": True}
+
+    def test_unknown_audience_ignored(self) -> None:
+        """Unknown audience names should be silently ignored."""
+        flags = audience_enabled_to_fbs_flags(("nonexistent_audience",))
+        assert flags == {}
